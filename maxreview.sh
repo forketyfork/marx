@@ -132,11 +132,30 @@ PRS=$(gh pr list --repo "$REPO" --state open --json number,title,headRefName,aut
 # 1. Have at least one reviewer (either requested or completed review)
 # 2. Current user is NOT the author
 # 3. Current user is NOT in the reviewers list
+# Note: Handle both flat array format and nested nodes[] format from GitHub API
 FILTERED_PRS=$(echo "$PRS" | jq -c --arg user "$CURRENT_USER" '[
-    .[] | select(
-        ((.reviewRequests | length) > 0 or (.reviews | length) > 0) and
+    .[] |
+    # Extract reviewer logins handling both flat arrays and nested nodes
+    (.reviewRequests | if type == "array" then
+        if length > 0 and .[0] | has("login") then map(.login)
+        elif length > 0 and .[0] | has("requestedReviewer") then map(.requestedReviewer.login)
+        else []
+        end
+    elif type == "object" and has("nodes") then .nodes | map(.requestedReviewer.login // .login)
+    else []
+    end) as $requestedReviewers |
+    (.reviews | if type == "array" then
+        if length > 0 and .[0] | has("author") then map(.author.login)
+        else []
+        end
+    elif type == "object" and has("nodes") then .nodes | map(.author.login)
+    else []
+    end) as $reviewAuthors |
+    # Filter based on extracted data
+    select(
+        (($requestedReviewers | length) > 0 or ($reviewAuthors | length) > 0) and
         (.author.login != $user) and
-        ([.reviewRequests[].login, .reviews[].author.login] | all(. != $user))
+        (($requestedReviewers + $reviewAuthors) | all(. != $user))
     )
 ]')
 
@@ -166,8 +185,24 @@ while IFS= read -r pr; do
     additions=$(echo "$pr" | jq -r '.additions')
     deletions=$(echo "$pr" | jq -r '.deletions')
 
-    # Get reviewer info
-    reviewers=$(echo "$pr" | jq -r '[(.reviewRequests[].login // empty), (.reviews[].author.login // empty)] | unique | join(", ")')
+    # Get reviewer info - handle both flat arrays and nested nodes
+    reviewers=$(echo "$pr" | jq -r '
+        ((.reviewRequests | if type == "array" then
+            if length > 0 and .[0] | has("login") then map(.login)
+            elif length > 0 and .[0] | has("requestedReviewer") then map(.requestedReviewer.login)
+            else []
+            end
+        elif type == "object" and has("nodes") then .nodes | map(.requestedReviewer.login // .login)
+        else []
+        end) +
+        (.reviews | if type == "array" then
+            if length > 0 and .[0] | has("author") then map(.author.login)
+            else []
+            end
+        elif type == "object" and has("nodes") then .nodes | map(.author.login)
+        else []
+        end)) | unique | join(", ")
+    ')
 
     PR_NUMBERS[index]=$number
     PR_BRANCHES[index]=$branch
@@ -398,8 +433,9 @@ EOF
                 echo "$json_output" | jq '.' > "${output_file}"
                 print_success "${model_name} analysis completed"
             else
-                print_warning "${model_name} returned non-JSON output, saving as-is"
-                echo "$temp_output" > "${output_file}"
+                print_warning "${model_name} returned non-JSON output, using empty review"
+                # Always write valid JSON to avoid breaking merge step
+                echo "{\"pr_summary\":{\"number\":${SELECTED_PR},\"title\":\"Non-JSON output\",\"description\":\"${model_name} returned non-JSON output\"},\"issues\":[]}" > "${output_file}"
             fi
         fi
 
@@ -417,6 +453,7 @@ EOF
             print_warning "Error details:"
             cat "${stderr_file}" >&2
         fi
+        # Always write valid JSON to avoid breaking merge step
         echo "{\"pr_summary\":{\"number\":${SELECTED_PR},\"title\":\"Error\",\"description\":\"${model_name} analysis failed\"},\"issues\":[]}" > "${output_file}"
     fi
 }
@@ -486,7 +523,20 @@ print_success "All AI models completed their analysis! 📝"
 
 # Merge the results
 print_info "Merging results from all models..."
+
+# Verify all review files are valid JSON before merging
+for review_file in "${CLAUDE_OUTPUT}" "${CODEX_OUTPUT}" "${GEMINI_OUTPUT}"; do
+    if ! jq empty "$review_file" 2>/dev/null; then
+        print_error "Invalid JSON in ${review_file}, replacing with empty review"
+        echo "{\"pr_summary\":{\"number\":${SELECTED_PR},\"title\":\"Error\",\"description\":\"Review file was invalid\"},\"issues\":[]}" > "$review_file"
+    fi
+done
+
 MERGED_RESULT=$(merge_reviews "${CLAUDE_OUTPUT}" "${CODEX_OUTPUT}" "${GEMINI_OUTPUT}")
+if [ -z "$MERGED_RESULT" ] || ! echo "$MERGED_RESULT" | jq empty 2>/dev/null; then
+    print_error "Failed to merge reviews, creating fallback result"
+    MERGED_RESULT="{\"descriptions\":[{\"agent\":\"error\",\"description\":\"Failed to merge reviews\"}],\"pr_summary\":{\"number\":${SELECTED_PR},\"title\":\"Merge Error\"},\"issues\":[]}"
+fi
 echo "$MERGED_RESULT" > "${MERGED_OUTPUT}"
 
 cd "${WORKTREE_PATH}" || {
