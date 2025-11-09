@@ -137,15 +137,15 @@ FILTERED_PRS=$(echo "$PRS" | jq -c --arg user "$CURRENT_USER" '[
     .[] |
     # Extract reviewer logins handling both flat arrays and nested nodes
     (.reviewRequests | if type == "array" then
-        if length > 0 and .[0] | has("login") then map(.login)
-        elif length > 0 and .[0] | has("requestedReviewer") then map(.requestedReviewer.login)
+        if length > 0 and (.[0] | has("login")) then map(.login)
+        elif length > 0 and (.[0] | has("requestedReviewer")) then map(.requestedReviewer.login)
         else []
         end
     elif type == "object" and has("nodes") then .nodes | map(.requestedReviewer.login // .login)
     else []
     end) as $requestedReviewers |
     (.reviews | if type == "array" then
-        if length > 0 and .[0] | has("author") then map(.author.login)
+        if length > 0 and (.[0] | has("author")) then map(.author.login)
         else []
         end
     elif type == "object" and has("nodes") then .nodes | map(.author.login)
@@ -188,15 +188,15 @@ while IFS= read -r pr; do
     # Get reviewer info - handle both flat arrays and nested nodes
     reviewers=$(echo "$pr" | jq -r '
         ((.reviewRequests | if type == "array" then
-            if length > 0 and .[0] | has("login") then map(.login)
-            elif length > 0 and .[0] | has("requestedReviewer") then map(.requestedReviewer.login)
+            if length > 0 and (.[0] | has("login")) then map(.login)
+            elif length > 0 and (.[0] | has("requestedReviewer")) then map(.requestedReviewer.login)
             else []
             end
         elif type == "object" and has("nodes") then .nodes | map(.requestedReviewer.login // .login)
         else []
         end) +
         (.reviews | if type == "array" then
-            if length > 0 and .[0] | has("author") then map(.author.login)
+            if length > 0 and (.[0] | has("author")) then map(.author.login)
             else []
             end
         elif type == "object" and has("nodes") then .nodes | map(.author.login)
