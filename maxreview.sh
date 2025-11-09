@@ -60,6 +60,14 @@ check_dependencies() {
         missing_deps+=("claude (Claude CLI)")
     fi
 
+    if ! command -v codex &> /dev/null; then
+        missing_deps+=("codex (Codex CLI)")
+    fi
+
+    if ! command -v gemini &> /dev/null; then
+        missing_deps+=("gemini (Gemini CLI)")
+    fi
+
     if [ ${#missing_deps[@]} -ne 0 ]; then
         print_error "Missing required dependencies: ${missing_deps[*]}"
         echo -e "${CYAN}Please install them and try again.${RESET}"
@@ -71,13 +79,15 @@ show_usage() {
     echo "Usage: $0"
     echo ""
     echo "Interactive script to fetch open GitHub PRs with reviewers, create a git worktree,"
-    echo "and run automated code review with Claude."
+    echo "and run automated code review with multiple AI models (Claude, Codex, Gemini)."
     echo ""
     echo "Prerequisites:"
     echo "  - git"
     echo "  - gh (GitHub CLI)"
     echo "  - jq"
     echo "  - claude (Claude CLI)"
+    echo "  - codex (Codex CLI)"
+    echo "  - gemini (Gemini CLI)"
     echo ""
     echo "Options:"
     echo "  -h, --help    Show this help message"
@@ -211,15 +221,52 @@ git checkout "$ORIGINAL_BRANCH" > /dev/null 2>&1
 WORKTREE_DIR="pr-${SELECTED_PR}-${SELECTED_BRANCH}"
 WORKTREE_PATH="../${WORKTREE_DIR}"
 
-# Check if worktree already exists
-if [ -d "$WORKTREE_PATH" ]; then
-    print_warning "Worktree directory already exists: ${WORKTREE_PATH}"
+# Check if worktree is registered in git (even if directory doesn't exist)
+WORKTREE_REGISTERED=false
+if git worktree list | grep -q "$(basename "$WORKTREE_PATH")"; then
+    WORKTREE_REGISTERED=true
+fi
+
+# Check if worktree needs cleanup
+if [ "$WORKTREE_REGISTERED" = true ] || [ -d "$WORKTREE_PATH" ]; then
+    if [ "$WORKTREE_REGISTERED" = true ]; then
+        print_warning "Worktree is registered in git: ${WORKTREE_PATH}"
+    fi
+    if [ -d "$WORKTREE_PATH" ]; then
+        print_warning "Worktree directory exists: ${WORKTREE_PATH}"
+    fi
+
     echo -e "${CYAN}Do you want to remove it and recreate? [y/N]:${RESET} "
     read -r confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        print_info "Removing existing worktree..."
-        git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true
-        rm -rf "$WORKTREE_PATH" 2>/dev/null || true
+        print_info "Cleaning up existing worktree..."
+
+        # First, try to remove the worktree registration if it exists
+        if [ "$WORKTREE_REGISTERED" = true ]; then
+            if git worktree remove "$WORKTREE_PATH" --force 2>/dev/null; then
+                print_success "Removed worktree registration"
+            else
+                print_warning "Could not remove worktree, pruning stale entries..."
+                git worktree prune 2>/dev/null || true
+            fi
+        fi
+
+        # Then remove the directory if it exists
+        if [ -d "$WORKTREE_PATH" ]; then
+            rm -rf "$WORKTREE_PATH" || {
+                print_error "Failed to remove directory ${WORKTREE_PATH}"
+                exit 1
+            }
+            print_success "Removed worktree directory"
+        fi
+
+        # Final verification
+        if git worktree list | grep -q "$(basename "$WORKTREE_PATH")"; then
+            print_error "Worktree is still registered, running final prune..."
+            git worktree prune -v
+        fi
+
+        print_success "Cleanup complete"
     else
         print_info "Aborting"
         exit 0
@@ -228,9 +275,14 @@ fi
 
 # Create the worktree
 print_info "Creating worktree at ${WORKTREE_PATH}..."
-git worktree add "$WORKTREE_PATH" "$COMMIT_SHA" > /dev/null 2>&1
-
-print_success "Worktree created successfully! 🎉"
+if git worktree add "$WORKTREE_PATH" "$COMMIT_SHA" > /dev/null 2>&1; then
+    print_success "Worktree created successfully! 🎉"
+else
+    print_error "Failed to create worktree"
+    print_info "Debug: Listing existing worktrees..."
+    git worktree list
+    exit 1
+fi
 
 # Symlink .claude directory if it exists
 ORIGINAL_DIR=$(pwd)
@@ -240,10 +292,14 @@ if [ -d "${ORIGINAL_DIR}/.claude" ]; then
     print_success ".claude directory symlinked"
 fi
 
-# Run Claude code review
-print_header "🤖 Running automated code review with Claude..."
+# Function to run a single AI model review
+run_model_review() {
+    local model_name="$1"
+    local model_cmd="$2"
+    local output_file="$3"
+    local agent_name="$4"
 
-REVIEW_PROMPT="You are conducting a comprehensive code review for PR #${SELECTED_PR} in repository ${REPO}.
+    local prompt="You are conducting a comprehensive code review for PR #${SELECTED_PR} in repository ${REPO}.
 
 Your task:
 1. Use the gh command to gather all context about this PR:
@@ -271,6 +327,7 @@ Your task:
   },
   \"issues\": [
     {
+      \"agent\": \"${agent_name}\",
       \"priority\": \"P0|P1|P2\",
       \"file\": \"<full_file_path>\",
       \"line\": <line_number>,
@@ -288,39 +345,180 @@ Priority definitions:
 
 Ensure your response is ONLY valid JSON, no additional text before or after."
 
+    print_info "Starting ${model_name} analysis..."
+
+    local temp_output
+    local exit_code
+    local stderr_file="${output_file}.stderr"
+
+    case "$model_cmd" in
+        claude)
+            temp_output=$(cd "${WORKTREE_PATH}" && claude --output-format text 2>"${stderr_file}" <<EOF
+${prompt}
+EOF
+)
+            exit_code=$?
+            ;;
+        codex)
+            temp_output=$(cd "${WORKTREE_PATH}" && codex exec 2>"${stderr_file}" <<EOF
+${prompt}
+EOF
+)
+            exit_code=$?
+            ;;
+        gemini)
+            temp_output=$(cd "${WORKTREE_PATH}" && gemini --output-format text 2>"${stderr_file}" <<EOF
+${prompt}
+EOF
+)
+            exit_code=$?
+            ;;
+        *)
+            print_error "Unknown model command: ${model_cmd}"
+            exit_code=1
+            ;;
+    esac
+
+    if [ $exit_code -eq 0 ] && [ -n "$temp_output" ]; then
+        # Try to extract JSON from output (in case there are extra messages)
+        local json_output
+        json_output=$(echo "$temp_output" | jq -s '.[0]' 2>/dev/null)
+
+        if [ -n "$json_output" ] && [ "$json_output" != "null" ]; then
+            echo "$json_output" > "${output_file}"
+            print_success "${model_name} analysis completed"
+        else
+            # Try to find first valid JSON object using awk
+            json_output=$(echo "$temp_output" | awk '
+                /^{/ { flag=1; json=$0; next }
+                flag { json=json"\n"$0 }
+                /^}/ && flag { print json"\n}"; exit }
+            ')
+            if [ -n "$json_output" ] && echo "$json_output" | jq empty 2>/dev/null; then
+                echo "$json_output" | jq '.' > "${output_file}"
+                print_success "${model_name} analysis completed"
+            else
+                print_warning "${model_name} returned non-JSON output, saving as-is"
+                echo "$temp_output" > "${output_file}"
+            fi
+        fi
+
+        # Clean up stderr file if it's empty or only contains benign messages
+        if [ -f "${stderr_file}" ]; then
+            if [ ! -s "${stderr_file}" ]; then
+                rm -f "${stderr_file}"
+            elif ! grep -v "Loaded cached credentials\|stdout is not a terminal\|Error executing tool" "${stderr_file}" | grep -q .; then
+                rm -f "${stderr_file}"
+            fi
+        fi
+    else
+        print_error "${model_name} analysis failed"
+        if [ -f "${stderr_file}" ] && [ -s "${stderr_file}" ]; then
+            print_warning "Error details:"
+            cat "${stderr_file}" >&2
+        fi
+        echo "{\"pr_summary\":{\"number\":${SELECTED_PR},\"title\":\"Error\",\"description\":\"${model_name} analysis failed\"},\"issues\":[]}" > "${output_file}"
+    fi
+}
+
+# Function to merge review results using jq
+merge_reviews() {
+    local claude_file="$1"
+    local codex_file="$2"
+    local gemini_file="$3"
+
+    jq -s '
+    {
+        "descriptions": [
+            {
+                "agent": "claude",
+                "description": .[0].pr_summary.description
+            },
+            {
+                "agent": "codex",
+                "description": .[1].pr_summary.description
+            },
+            {
+                "agent": "gemini",
+                "description": .[2].pr_summary.description
+            }
+        ],
+        "pr_summary": {
+            "number": .[0].pr_summary.number,
+            "title": .[0].pr_summary.title
+        },
+        "issues": ([.[].issues[]] | sort_by(
+            if .priority == "P0" then 0
+            elif .priority == "P1" then 1
+            else 2
+            end
+        ))
+    }
+    ' "${claude_file}" "${codex_file}" "${gemini_file}"
+}
+
+# Run all three AI models in parallel
+print_header "🤖 Running automated code review with multiple AI models..."
+
+CLAUDE_OUTPUT="${WORKTREE_PATH}/claude-review.json"
+CODEX_OUTPUT="${WORKTREE_PATH}/codex-review.json"
+GEMINI_OUTPUT="${WORKTREE_PATH}/gemini-review.json"
+MERGED_OUTPUT="${WORKTREE_PATH}/merged-review.json"
+
+print_info "Launching parallel reviews (this may take a few minutes)..."
+
+# Run all three models in parallel
+run_model_review "Claude" "claude" "${CLAUDE_OUTPUT}" "claude" &
+CLAUDE_PID=$!
+
+run_model_review "Codex" "codex" "${CODEX_OUTPUT}" "codex" &
+CODEX_PID=$!
+
+run_model_review "Gemini" "gemini" "${GEMINI_OUTPUT}" "gemini" &
+GEMINI_PID=$!
+
+# Wait for all background jobs to complete
+wait $CLAUDE_PID
+wait $CODEX_PID
+wait $GEMINI_PID
+
+print_success "All AI models completed their analysis! 📝"
+
+# Merge the results
+print_info "Merging results from all models..."
+MERGED_RESULT=$(merge_reviews "${CLAUDE_OUTPUT}" "${CODEX_OUTPUT}" "${GEMINI_OUTPUT}")
+echo "$MERGED_RESULT" > "${MERGED_OUTPUT}"
+
 cd "${WORKTREE_PATH}" || {
     print_error "Failed to change to worktree directory"
     exit 1
 }
 
-print_info "Analyzing code... (this may take a minute)"
-
-REVIEW_OUTPUT=$(claude --output-format text <<EOF
-${REVIEW_PROMPT}
-EOF
-)
-
 cd "${ORIGINAL_DIR}" || exit 1
 
-# Parse and display the review
-if echo "$REVIEW_OUTPUT" | jq empty 2>/dev/null; then
-    print_success "Code review completed! 📝"
+# Parse and display the merged review
+if echo "$MERGED_RESULT" | jq empty 2>/dev/null; then
+    print_success "Merged code review completed! 📝"
     echo ""
 
     # Extract and display PR summary
     print_header "📋 PR Summary"
-    PR_TITLE=$(echo "$REVIEW_OUTPUT" | jq -r '.pr_summary.title')
-    PR_DESC=$(echo "$REVIEW_OUTPUT" | jq -r '.pr_summary.description')
+    PR_TITLE=$(echo "$MERGED_RESULT" | jq -r '.pr_summary.title')
 
     echo -e "${BOLD}Title:${RESET} ${PR_TITLE}"
-    echo -e "${BOLD}Description:${RESET} ${PR_DESC}"
+    echo ""
+
+    # Display descriptions from each agent
+    print_header "📝 Descriptions from Each AI Model"
+    echo "$MERGED_RESULT" | jq -r '.descriptions[] |
+        "🤖 \u001b[1;35m\(.agent | ascii_upcase)\u001b[0m: \(.description)"'
     echo ""
 
     # Count issues by priority
-    P0_COUNT=$(echo "$REVIEW_OUTPUT" | jq '[.issues[] | select(.priority == "P0")] | length')
-    P1_COUNT=$(echo "$REVIEW_OUTPUT" | jq '[.issues[] | select(.priority == "P1")] | length')
-    P2_COUNT=$(echo "$REVIEW_OUTPUT" | jq '[.issues[] | select(.priority == "P2")] | length')
-    TOTAL_ISSUES=$(echo "$REVIEW_OUTPUT" | jq '.issues | length')
+    P0_COUNT=$(echo "$MERGED_RESULT" | jq '[.issues[] | select(.priority == "P0")] | length')
+    P1_COUNT=$(echo "$MERGED_RESULT" | jq '[.issues[] | select(.priority == "P1")] | length')
+    P2_COUNT=$(echo "$MERGED_RESULT" | jq '[.issues[] | select(.priority == "P2")] | length')
+    TOTAL_ISSUES=$(echo "$MERGED_RESULT" | jq '.issues | length')
 
     print_header "📊 Issues Found: ${TOTAL_ISSUES}"
 
@@ -335,8 +533,9 @@ if echo "$REVIEW_OUTPUT" | jq empty 2>/dev/null; then
         # Display P0 issues
         if [ "$P0_COUNT" -gt 0 ]; then
             print_header "🔴 P0 - Critical Issues"
-            echo "$REVIEW_OUTPUT" | jq -r '.issues[] | select(.priority == "P0") |
+            echo "$MERGED_RESULT" | jq -r '.issues[] | select(.priority == "P0") |
                 "╭─────────────────────────────────────────────────────────────\n" +
+                "│ 🤖 Agent: \u001b[1;35m\(.agent | ascii_upcase)\u001b[0m\n" +
                 "│ 📁 \u001b[1;36m\(.file):\(.line)\u001b[0m\n" +
                 "│ 🏷️  \u001b[1m\(.category)\u001b[0m\n" +
                 "│\n" +
@@ -349,8 +548,9 @@ if echo "$REVIEW_OUTPUT" | jq empty 2>/dev/null; then
         # Display P1 issues
         if [ "$P1_COUNT" -gt 0 ]; then
             print_header "🟡 P1 - Important Issues"
-            echo "$REVIEW_OUTPUT" | jq -r '.issues[] | select(.priority == "P1") |
+            echo "$MERGED_RESULT" | jq -r '.issues[] | select(.priority == "P1") |
                 "╭─────────────────────────────────────────────────────────────\n" +
+                "│ 🤖 Agent: \u001b[1;35m\(.agent | ascii_upcase)\u001b[0m\n" +
                 "│ 📁 \u001b[1;36m\(.file):\(.line)\u001b[0m\n" +
                 "│ 🏷️  \u001b[1m\(.category)\u001b[0m\n" +
                 "│\n" +
@@ -363,8 +563,9 @@ if echo "$REVIEW_OUTPUT" | jq empty 2>/dev/null; then
         # Display P2 issues
         if [ "$P2_COUNT" -gt 0 ]; then
             print_header "🔵 P2 - Suggestions"
-            echo "$REVIEW_OUTPUT" | jq -r '.issues[] | select(.priority == "P2") |
+            echo "$MERGED_RESULT" | jq -r '.issues[] | select(.priority == "P2") |
                 "╭─────────────────────────────────────────────────────────────\n" +
+                "│ 🤖 Agent: \u001b[1;35m\(.agent | ascii_upcase)\u001b[0m\n" +
                 "│ 📁 \u001b[1;36m\(.file):\(.line)\u001b[0m\n" +
                 "│ 🏷️  \u001b[1m\(.category)\u001b[0m\n" +
                 "│\n" +
@@ -375,14 +576,16 @@ if echo "$REVIEW_OUTPUT" | jq empty 2>/dev/null; then
         fi
     fi
 
-    # Save review to file
-    REVIEW_FILE="${WORKTREE_PATH}/claude-review.json"
-    echo "$REVIEW_OUTPUT" > "$REVIEW_FILE"
-    print_info "Full review saved to: ${REVIEW_FILE}"
+    # Save individual and merged reviews
+    print_info "Individual reviews saved:"
+    echo -e "  ${CYAN}${CLAUDE_OUTPUT}${RESET}"
+    echo -e "  ${CYAN}${CODEX_OUTPUT}${RESET}"
+    echo -e "  ${CYAN}${GEMINI_OUTPUT}${RESET}"
+    print_info "Merged review saved to: ${MERGED_OUTPUT}"
 else
-    print_error "Failed to parse Claude output as JSON"
+    print_error "Failed to parse merged output as JSON"
     print_warning "Raw output:"
-    echo "$REVIEW_OUTPUT"
+    echo "$MERGED_RESULT"
 fi
 
 echo ""
