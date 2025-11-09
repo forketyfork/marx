@@ -116,7 +116,7 @@ print_success "Current user: ${BOLD}${CURRENT_USER}${RESET}"
 
 # Fetch PRs with reviewers
 print_header "🔍 Fetching open PRs with reviewers (excluding yours)..."
-PRS=$(gh pr list --repo "$REPO" --state open --json number,title,headRefName,author,reviewRequests,reviews --limit 100)
+PRS=$(gh pr list --repo "$REPO" --state open --json number,title,headRefName,author,reviewRequests,reviews,additions,deletions --limit 100)
 
 # Filter PRs that:
 # 1. Have at least one reviewer (either requested or completed review)
@@ -153,6 +153,8 @@ while IFS= read -r pr; do
     title=$(echo "$pr" | jq -r '.title')
     branch=$(echo "$pr" | jq -r '.headRefName')
     author=$(echo "$pr" | jq -r '.author.login')
+    additions=$(echo "$pr" | jq -r '.additions')
+    deletions=$(echo "$pr" | jq -r '.deletions')
 
     # Get reviewer info
     reviewers=$(echo "$pr" | jq -r '[(.reviewRequests[].login // empty), (.reviews[].author.login // empty)] | unique | join(", ")')
@@ -164,6 +166,7 @@ while IFS= read -r pr; do
     echo -e "    👤 Author: ${CYAN}${author}${RESET}"
     echo -e "    🌿 Branch: ${MAGENTA}${branch}${RESET}"
     echo -e "    👥 Reviewers: ${BLUE}${reviewers}${RESET}"
+    echo -e "    📊 Lines: ${GREEN}+${additions}${RESET} ${RED}-${deletions}${RESET}"
     echo ""
 
     ((index++))
