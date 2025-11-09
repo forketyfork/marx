@@ -469,22 +469,22 @@ merge_reviews() {
         "descriptions": [
             {
                 "agent": "claude",
-                "description": .[0].pr_summary.description
+                "description": (.[0].pr_summary.description // "No description")
             },
             {
                 "agent": "codex",
-                "description": .[1].pr_summary.description
+                "description": (.[1].pr_summary.description // "No description")
             },
             {
                 "agent": "gemini",
-                "description": .[2].pr_summary.description
+                "description": (.[2].pr_summary.description // "No description")
             }
         ],
         "pr_summary": {
-            "number": .[0].pr_summary.number,
-            "title": .[0].pr_summary.title
+            "number": (.[0].pr_summary.number // 0),
+            "title": (.[0].pr_summary.title // "Unknown")
         },
-        "issues": ([.[].issues[]] | sort_by(
+        "issues": ([.[] | (.issues // []) | .[]] | sort_by(
             if .priority == "P0" then 0
             elif .priority == "P1" then 1
             else 2
