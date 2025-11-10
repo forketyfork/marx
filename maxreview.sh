@@ -661,6 +661,10 @@ SCRIPT
         --user "${host_uid}:${host_gid}"
         -v "${worktree_abs_path}:/workspace"
         -e "GITHUB_TOKEN=${GITHUB_TOKEN:-}"
+        -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}"
+        -e "OPENAI_API_KEY=${OPENAI_API_KEY:-}"
+        -e "GOOGLE_API_KEY=${GOOGLE_API_KEY:-}"
+        -e "GEMINI_API_KEY=${GEMINI_API_KEY:-}"
         -e "HOME_OVERRIDE=/workspace/${home_dir}"
         -w /workspace
     )

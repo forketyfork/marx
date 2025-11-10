@@ -31,18 +31,41 @@ The script will automatically build the required Docker image on first run.
 
 ## Environment Variables
 
+### Required
 - `GITHUB_TOKEN` - GitHub API token (required for container access to GitHub API)
+
+### API Keys (at least one required)
+The following API keys enable the respective AI models to function. You can provide one or more:
+
+- `ANTHROPIC_API_KEY` - Anthropic API key for Claude
+- `OPENAI_API_KEY` - OpenAI API key for Codex
+- `GOOGLE_API_KEY` or `GEMINI_API_KEY` - Google API key for Gemini
+
+Without API keys, the AI models will fall back to using local configuration from `~/.claude`, `~/.codex`, or `~/.gemini` directories if available.
+
+### Optional
 - `MAXREVIEW_REPO` - Optional owner/name override (e.g., `owner/repo`) when auto-detection fails
 
 ## Configuration
 
-MaxReview expects AI model configuration directories in your home directory:
+MaxReview supports two authentication methods for AI models:
+
+### Method 1: API Keys (Recommended for CI/CD)
+Set environment variables with your API keys:
+```bash
+export ANTHROPIC_API_KEY="your-key-here"
+export OPENAI_API_KEY="your-key-here"
+export GOOGLE_API_KEY="your-key-here"
+```
+
+### Method 2: Local Configuration Directories
+MaxReview can use AI model configuration directories from your home directory:
 
 - `~/.claude` - Claude CLI configuration
 - `~/.codex` - Codex CLI configuration
 - `~/.gemini` - Gemini CLI configuration
 
-These directories are mounted read-only into the Docker container during execution.
+These directories are mounted read-only into the Docker container during execution. This method is useful for development when you've already authenticated via the respective CLI tools.
 
 ## Usage
 
@@ -242,10 +265,12 @@ The script will automatically handle this by creating an empty review. Error det
 - Helpful hints for common issues (missing/invalid credentials)
 
 Common causes:
-- Missing authentication: Run the CLI auth command (e.g., `claude auth` for Claude)
-- Invalid credentials in `~/.claude/`, `~/.codex/`, or `~/.gemini/`
+- Missing authentication: Set API key environment variables (e.g., `ANTHROPIC_API_KEY`) or run the CLI auth command (e.g., `claude auth` for Claude)
+- Invalid API keys or credentials in `~/.claude/`, `~/.codex/`, or `~/.gemini/`
 - Network connectivity issues
 - API quota/rate limiting
+
+**Tip**: For CI/CD environments, using API key environment variables is more reliable than local configuration directories.
 
 ## Contributing
 
