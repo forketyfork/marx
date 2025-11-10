@@ -119,7 +119,7 @@ build_docker_image() {
 }
 
 show_usage() {
-    echo "Usage: $0"
+    echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Interactive script to fetch open GitHub PRs with reviewers, create a git worktree,"
     echo "and run automated code review with multiple AI models (Claude, Codex, Gemini)."
@@ -135,12 +135,62 @@ show_usage() {
     echo "  MAXREVIEW_REPO   Optional owner/name override when auto-detect fails"
     echo ""
     echo "Options:"
-    echo "  -h, --help    Show this help message"
+    echo "  -h, --help           Show this help message"
+    echo "  --pr <number>        Specify PR number directly (skip interactive selection)"
+    echo "  --agent <agents>     Comma-separated list of agents to run (claude,codex,gemini)"
+    echo "                       Default: all agents"
+    echo ""
+    echo "Examples:"
+    echo "  $0                            # Interactive mode with all agents"
+    echo "  $0 --pr 123                   # Review PR #123 with all agents"
+    echo "  $0 --pr 123 --agent claude    # Review PR #123 with Claude only"
+    echo "  $0 --agent codex,gemini       # Interactive mode with Codex and Gemini"
 }
 
-if [[ "${1:-}" == "-h" ]] || [[ "${1:-}" == "--help" ]]; then
-    show_usage
-    exit 0
+# Parse command-line arguments
+SELECTED_PR=""
+SELECTED_AGENTS=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_usage
+            exit 0
+            ;;
+        --pr)
+            if [[ -z "${2:-}" ]] || [[ "$2" =~ ^- ]]; then
+                print_error "--pr requires a PR number"
+                exit 1
+            fi
+            SELECTED_PR="$2"
+            shift 2
+            ;;
+        --agent)
+            if [[ -z "${2:-}" ]] || [[ "$2" =~ ^- ]]; then
+                print_error "--agent requires a comma-separated list of agents"
+                exit 1
+            fi
+            SELECTED_AGENTS="$2"
+            shift 2
+            ;;
+        *)
+            print_error "Unknown option: $1"
+            show_usage
+            exit 1
+            ;;
+    esac
+done
+
+# Validate agents if specified
+if [[ -n "$SELECTED_AGENTS" ]]; then
+    IFS=',' read -ra AGENT_ARRAY <<< "$SELECTED_AGENTS"
+    for agent in "${AGENT_ARRAY[@]}"; do
+        agent=$(echo "$agent" | tr '[:upper:]' '[:lower:]' | xargs)
+        if [[ "$agent" != "claude" ]] && [[ "$agent" != "codex" ]] && [[ "$agent" != "gemini" ]]; then
+            print_error "Invalid agent: $agent. Valid agents are: claude, codex, gemini"
+            exit 1
+        fi
+    done
 fi
 
 check_dependencies
@@ -230,124 +280,143 @@ fi
 rm -f "${GH_ERROR}"
 print_success "Current user: ${BOLD}${CURRENT_USER}${RESET}"
 
-# Fetch PRs with reviewers
-print_header "🔍 Fetching open PRs with reviewers (excluding yours)..."
-GH_ERROR=$(mktemp)
-if ! PRS=$(gh pr list --repo "$REPO" --state open --json number,title,headRefName,author,reviewRequests,reviews,additions,deletions --limit 100 2>"${GH_ERROR}"); then
-    print_error "Failed to fetch pull requests."
-    if [ -s "${GH_ERROR}" ]; then
-        print_error "Error details:"
-        cat "${GH_ERROR}" >&2
+# Fetch PRs with reviewers or use --pr if provided
+if [[ -z "$SELECTED_PR" ]]; then
+    print_header "🔍 Fetching open PRs with reviewers (excluding yours)..."
+    GH_ERROR=$(mktemp)
+    if ! PRS=$(gh pr list --repo "$REPO" --state open --json number,title,headRefName,author,reviewRequests,reviews,additions,deletions --limit 100 2>"${GH_ERROR}"); then
+        print_error "Failed to fetch pull requests."
+        if [ -s "${GH_ERROR}" ]; then
+            print_error "Error details:"
+            cat "${GH_ERROR}" >&2
+        fi
+        rm -f "${GH_ERROR}"
+        exit 1
     fi
     rm -f "${GH_ERROR}"
-    exit 1
-fi
-rm -f "${GH_ERROR}"
 
-# Filter PRs that:
-# 1. Have at least one reviewer (either requested or completed review)
-# 2. Current user is NOT the author
-# 3. Current user is NOT in the reviewers list
-# Note: Handle both flat array format and nested nodes[] format from GitHub API
-FILTERED_PRS=$(echo "$PRS" | jq -c --arg user "$CURRENT_USER" '[
-    .[] |
-    # Extract reviewer logins handling both flat arrays and nested nodes
-    (.reviewRequests | if type == "array" then
-        if length > 0 and (.[0] | has("login")) then map(.login)
-        elif length > 0 and (.[0] | has("requestedReviewer")) then map(.requestedReviewer.login)
-        else []
-        end
-    elif type == "object" and has("nodes") then .nodes | map(.requestedReviewer.login // .login)
-    else []
-    end) as $requestedReviewers |
-    (.reviews | if type == "array" then
-        if length > 0 and (.[0] | has("author")) then map(.author.login)
-        else []
-        end
-    elif type == "object" and has("nodes") then .nodes | map(.author.login)
-    else []
-    end) as $reviewAuthors |
-    # Filter based on extracted data
-    select(
-        (($requestedReviewers | length) > 0 or ($reviewAuthors | length) > 0) and
-        (.author.login != $user) and
-        (($requestedReviewers + $reviewAuthors) | all(. != $user))
-    )
-]')
-
-PR_COUNT=$(echo "$FILTERED_PRS" | jq 'length')
-
-if [ "$PR_COUNT" -eq 0 ]; then
-    print_warning "No open PRs with reviewers found in ${REPO} (excluding PRs where you are the author or reviewer)"
-    exit 0
-fi
-
-print_success "Found ${BOLD}${PR_COUNT}${RESET} PR(s) with reviewers"
-
-# Display PRs
-echo ""
-echo -e "${BOLD}${BLUE}Available PRs:${RESET}"
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-
-declare -a PR_NUMBERS
-declare -a PR_BRANCHES
-index=1
-
-while IFS= read -r pr; do
-    number=$(echo "$pr" | jq -r '.number')
-    title=$(echo "$pr" | jq -r '.title')
-    branch=$(echo "$pr" | jq -r '.headRefName')
-    author=$(echo "$pr" | jq -r '.author.login')
-    additions=$(echo "$pr" | jq -r '.additions')
-    deletions=$(echo "$pr" | jq -r '.deletions')
-
-    # Get reviewer info - handle both flat arrays and nested nodes
-    reviewers=$(echo "$pr" | jq -r '
-        ((.reviewRequests | if type == "array" then
+    # Filter PRs that:
+    # 1. Have at least one reviewer (either requested or completed review)
+    # 2. Current user is NOT the author
+    # 3. Current user is NOT in the reviewers list
+    # Note: Handle both flat array format and nested nodes[] format from GitHub API
+    FILTERED_PRS=$(echo "$PRS" | jq -c --arg user "$CURRENT_USER" '[
+        .[] |
+        # Extract reviewer logins handling both flat arrays and nested nodes
+        (.reviewRequests | if type == "array" then
             if length > 0 and (.[0] | has("login")) then map(.login)
             elif length > 0 and (.[0] | has("requestedReviewer")) then map(.requestedReviewer.login)
             else []
             end
         elif type == "object" and has("nodes") then .nodes | map(.requestedReviewer.login // .login)
         else []
-        end) +
+        end) as $requestedReviewers |
         (.reviews | if type == "array" then
             if length > 0 and (.[0] | has("author")) then map(.author.login)
             else []
             end
         elif type == "object" and has("nodes") then .nodes | map(.author.login)
         else []
-        end)) | unique | join(", ")
-    ')
+        end) as $reviewAuthors |
+        # Filter based on extracted data
+        select(
+            (($requestedReviewers | length) > 0 or ($reviewAuthors | length) > 0) and
+            (.author.login != $user) and
+            (($requestedReviewers + $reviewAuthors) | all(. != $user))
+        )
+    ]')
 
-    PR_NUMBERS[index]=$number
-    PR_BRANCHES[index]=$branch
+    PR_COUNT=$(echo "$FILTERED_PRS" | jq 'length')
 
-    echo -e "${BOLD}${GREEN}[$index]${RESET} ${YELLOW}#${number}${RESET} ${BOLD}${title}${RESET}"
-    echo -e "    👤 Author: ${CYAN}${author}${RESET}"
-    echo -e "    🌿 Branch: ${MAGENTA}${branch}${RESET}"
-    echo -e "    👥 Reviewers: ${BLUE}${reviewers}${RESET}"
-    echo -e "    📊 Lines: ${GREEN}+${additions}${RESET} ${RED}-${deletions}${RESET}"
+    if [ "$PR_COUNT" -eq 0 ]; then
+        print_warning "No open PRs with reviewers found in ${REPO} (excluding PRs where you are the author or reviewer)"
+        exit 0
+    fi
+
+    print_success "Found ${BOLD}${PR_COUNT}${RESET} PR(s) with reviewers"
+
+    # Display PRs
     echo ""
+    echo -e "${BOLD}${BLUE}Available PRs:${RESET}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
-    ((index++))
-done < <(echo "$FILTERED_PRS" | jq -c '.[]')
+    declare -a PR_NUMBERS
+    declare -a PR_BRANCHES
+    index=1
 
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    while IFS= read -r pr; do
+        number=$(echo "$pr" | jq -r '.number')
+        title=$(echo "$pr" | jq -r '.title')
+        branch=$(echo "$pr" | jq -r '.headRefName')
+        author=$(echo "$pr" | jq -r '.author.login')
+        additions=$(echo "$pr" | jq -r '.additions')
+        deletions=$(echo "$pr" | jq -r '.deletions')
 
-# Prompt for selection
-echo ""
-echo -e "${BOLD}${CYAN}Select a PR [1-$((index-1))]:${RESET} "
-read -r selection
+        # Get reviewer info - handle both flat arrays and nested nodes
+        reviewers=$(echo "$pr" | jq -r '
+            ((.reviewRequests | if type == "array" then
+                if length > 0 and (.[0] | has("login")) then map(.login)
+                elif length > 0 and (.[0] | has("requestedReviewer")) then map(.requestedReviewer.login)
+                else []
+                end
+            elif type == "object" and has("nodes") then .nodes | map(.requestedReviewer.login // .login)
+            else []
+            end) +
+            (.reviews | if type == "array" then
+                if length > 0 and (.[0] | has("author")) then map(.author.login)
+                else []
+                end
+            elif type == "object" and has("nodes") then .nodes | map(.author.login)
+            else []
+            end)) | unique | join(", ")
+        ')
 
-# Validate input
-if ! [[ "$selection" =~ ^[0-9]+$ ]] || [ "$selection" -lt 1 ] || [ "$selection" -ge "$index" ]; then
-    print_error "Invalid selection"
-    exit 1
+        PR_NUMBERS[index]=$number
+        PR_BRANCHES[index]=$branch
+
+        echo -e "${BOLD}${GREEN}[$index]${RESET} ${YELLOW}#${number}${RESET} ${BOLD}${title}${RESET}"
+        echo -e "    👤 Author: ${CYAN}${author}${RESET}"
+        echo -e "    🌿 Branch: ${MAGENTA}${branch}${RESET}"
+        echo -e "    👥 Reviewers: ${BLUE}${reviewers}${RESET}"
+        echo -e "    📊 Lines: ${GREEN}+${additions}${RESET} ${RED}-${deletions}${RESET}"
+        echo ""
+
+        ((index++))
+    done < <(echo "$FILTERED_PRS" | jq -c '.[]')
+
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+
+    # Prompt for selection
+    echo ""
+    echo -e "${BOLD}${CYAN}Select a PR [1-$((index-1))]:${RESET} "
+    read -r selection
+
+    # Validate input
+    if ! [[ "$selection" =~ ^[0-9]+$ ]] || [ "$selection" -lt 1 ] || [ "$selection" -ge "$index" ]; then
+        print_error "Invalid selection"
+        exit 1
+    fi
+
+    SELECTED_PR=${PR_NUMBERS[$selection]}
+    SELECTED_BRANCH=${PR_BRANCHES[$selection]}
+else
+    print_info "Using PR #${SELECTED_PR} from command line"
+    # Validate that the PR exists and get its branch
+    GH_ERROR=$(mktemp)
+    if ! PR_DATA=$(gh pr view "$SELECTED_PR" --repo "$REPO" --json number,headRefName 2>"${GH_ERROR}"); then
+        print_error "Failed to fetch PR #${SELECTED_PR}"
+        if [ -s "${GH_ERROR}" ]; then
+            print_error "Error details:"
+            cat "${GH_ERROR}" >&2
+        fi
+        rm -f "${GH_ERROR}"
+        exit 1
+    fi
+    rm -f "${GH_ERROR}"
+
+    SELECTED_BRANCH=$(echo "$PR_DATA" | jq -r '.headRefName')
+    print_success "Found PR #${SELECTED_PR} with branch: ${SELECTED_BRANCH}"
 fi
-
-SELECTED_PR=${PR_NUMBERS[$selection]}
-SELECTED_BRANCH=${PR_BRANCHES[$selection]}
 
 print_header "🚀 Setting up worktree for PR #${SELECTED_PR}"
 
@@ -551,7 +620,7 @@ setup_credentials() {
 case "$MODEL_CMD" in
     claude)
         setup_credentials "${CLAUDE_CONFIG_SRC:-}" "$HOME/.claude"
-        claude --output-format text --dangerously-skip-permissions < "$PROMPT_FILE" 2>"$STDERR_FILE"
+        claude --print --output-format text < "$PROMPT_FILE" 2>"$STDERR_FILE"
         ;;
     codex)
         setup_credentials "${CODEX_CONFIG_SRC:-}" "$HOME/.codex"
@@ -606,7 +675,9 @@ SCRIPT
         /bin/bash "/workspace/${runner_basename}" "$model_cmd" "/workspace/${prompt_basename}" "/workspace/${stderr_basename}"
     )
 
-    if temp_output=$("${docker_args[@]}"); then
+    local docker_stderr
+    docker_stderr=$(mktemp)
+    if temp_output=$("${docker_args[@]}" 2>"${docker_stderr}"); then
         exit_code=0
     else
         exit_code=$?
@@ -647,12 +718,34 @@ SCRIPT
                 rm -f "${stderr_path}"
             fi
         fi
+        rm -f "${docker_stderr}"
     else
         print_error "${model_name} analysis failed"
-        if [ -f "${stderr_path}" ] && [ -s "${stderr_path}" ]; then
-            print_warning "Error details:"
-            cat "${stderr_path}" >&2
+        local error_shown=false
+
+        # Show docker-level errors first
+        if [ -f "${docker_stderr}" ] && [ -s "${docker_stderr}" ]; then
+            print_warning "Docker error details:"
+            cat "${docker_stderr}" >&2
+            error_shown=true
         fi
+
+        # Show container stderr
+        if [ -f "${stderr_path}" ] && [ -s "${stderr_path}" ]; then
+            print_warning "Container stderr:"
+            cat "${stderr_path}" >&2
+            error_shown=true
+        fi
+
+        # If no error details were found, provide helpful hints
+        if [ "$error_shown" = false ]; then
+            print_warning "No error details captured. Common issues:"
+            echo "  - Missing or invalid credentials in ~/.${model_cmd}/" >&2
+            echo "  - Check if ${model_cmd} CLI is properly authenticated" >&2
+            echo "  - For Claude: run 'claude auth' to set up credentials" >&2
+        fi
+
+        rm -f "${docker_stderr}"
         # Always write valid JSON to avoid breaking merge step
         echo "{\"pr_summary\":{\"number\":${SELECTED_PR},\"title\":\"Error\",\"description\":\"${model_name} analysis failed\"},\"issues\":[]}" > "${output_file}"
     fi
@@ -694,8 +787,18 @@ merge_reviews() {
     ' "${claude_file}" "${codex_file}" "${gemini_file}"
 }
 
-# Run all three AI models in parallel
-print_header "🤖 Running automated code review with multiple AI models..."
+# Determine which agents to run
+declare -a AGENTS_TO_RUN
+if [[ -n "$SELECTED_AGENTS" ]]; then
+    IFS=',' read -ra AGENTS_TO_RUN <<< "$SELECTED_AGENTS"
+    for i in "${!AGENTS_TO_RUN[@]}"; do
+        AGENTS_TO_RUN[i]=$(echo "${AGENTS_TO_RUN[i]}" | tr '[:upper:]' '[:lower:]' | xargs)
+    done
+else
+    AGENTS_TO_RUN=("claude" "codex" "gemini")
+fi
+
+print_header "🤖 Running automated code review with AI models: ${AGENTS_TO_RUN[*]}"
 
 CLAUDE_OUTPUT="${WORKTREE_PATH}/claude-review.json"
 CODEX_OUTPUT="${WORKTREE_PATH}/codex-review.json"
@@ -704,22 +807,54 @@ MERGED_OUTPUT="${WORKTREE_PATH}/merged-review.json"
 
 print_info "Launching parallel reviews (this may take a few minutes)..."
 
-# Run all three models in parallel
-run_model_review "Claude" "claude" "${CLAUDE_OUTPUT}" "claude" &
-CLAUDE_PID=$!
+declare -a PIDS
 
-run_model_review "Codex" "codex" "${CODEX_OUTPUT}" "codex" &
-CODEX_PID=$!
-
-run_model_review "Gemini" "gemini" "${GEMINI_OUTPUT}" "gemini" &
-GEMINI_PID=$!
+# Run selected models in parallel
+for agent in "${AGENTS_TO_RUN[@]}"; do
+    case "$agent" in
+        claude)
+            run_model_review "Claude" "claude" "${CLAUDE_OUTPUT}" "claude" &
+            PIDS+=($!)
+            ;;
+        codex)
+            run_model_review "Codex" "codex" "${CODEX_OUTPUT}" "codex" &
+            PIDS+=($!)
+            ;;
+        gemini)
+            run_model_review "Gemini" "gemini" "${GEMINI_OUTPUT}" "gemini" &
+            PIDS+=($!)
+            ;;
+    esac
+done
 
 # Wait for all background jobs to complete
-wait $CLAUDE_PID
-wait $CODEX_PID
-wait $GEMINI_PID
+for pid in "${PIDS[@]}"; do
+    wait "$pid"
+done
 
 print_success "All AI models completed their analysis! 📝"
+
+# Create empty reviews for agents that were not run
+agent_in_list() {
+    local search="$1"
+    shift
+    local item
+    for item in "$@"; do
+        if [[ "$item" == "$search" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+for agent in "claude" "codex" "gemini"; do
+    output_var="${agent^^}_OUTPUT"
+    output_file="${!output_var}"
+
+    if ! agent_in_list "$agent" "${AGENTS_TO_RUN[@]}"; then
+        echo "{\"pr_summary\":{\"number\":${SELECTED_PR},\"title\":\"Not run\",\"description\":\"${agent} was not selected\"},\"issues\":[]}" > "$output_file"
+    fi
+done
 
 # Merge the results
 print_info "Merging results from all models..."

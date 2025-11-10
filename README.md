@@ -47,12 +47,34 @@ These directories are mounted read-only into the Docker container during executi
 ## Usage
 
 ```bash
-./maxreview.sh
+./maxreview.sh [OPTIONS]
 ```
 
 ### Options
 
 - `-h, --help` - Show help message
+- `--pr <number>` - Specify PR number directly (skip interactive selection)
+- `--agent <agents>` - Comma-separated list of agents to run (claude,codex,gemini)
+  - Default: all agents
+
+### Examples
+
+```bash
+# Interactive mode with all agents (default)
+./maxreview.sh
+
+# Review PR #123 with all agents
+./maxreview.sh --pr 123
+
+# Review PR #123 with Claude only
+./maxreview.sh --pr 123 --agent claude
+
+# Interactive mode with Codex and Gemini
+./maxreview.sh --agent codex,gemini
+
+# Review specific PR with multiple selected agents
+./maxreview.sh --pr 456 --agent claude,gemini
+```
 
 ## How It Works
 
@@ -78,20 +100,23 @@ Determines repository slug (owner/name) using three methods in order:
 - Handles both flat array and nested `nodes[]` API response formats
 
 ### 4. PR Selection & Worktree Creation
-- Displays formatted PR list with colors and statistics
-- Prompts you to select a PR
+- If `--pr` is specified: validates PR exists and gets branch name
+- Otherwise: displays formatted PR list with colors and statistics and prompts for selection
 - Fetches the PR and gets commit SHA
 - Creates a git worktree at `../pr-{number}-{sanitized-branch}`
 - Handles worktree cleanup if it already exists
 - Symlinks `.claude` directory from original repo
 
 ### 5. Parallel AI Code Review
+- If `--agent` is specified: runs only the selected agents
+- Otherwise: runs all three agents (claude, codex, gemini)
+
 Each AI model receives a detailed prompt instructing it to:
 - Gather PR context using `gh` commands
 - Review code for bugs, security issues, performance problems, etc.
 - Output findings in structured JSON format
 
-All three models run simultaneously in isolated Docker containers with:
+Selected models run simultaneously in isolated Docker containers with:
 - Mounted worktree directory
 - User UID/GID for proper file permissions
 - Config directories from home
@@ -186,8 +211,10 @@ The image is built automatically on first run using the Dockerfile in this repos
 MaxReview includes robust error handling:
 - Non-JSON outputs from AI models are handled gracefully with empty reviews
 - Failed API calls are caught and reported with detailed error messages
+- Docker-level errors and container stderr are both captured and displayed
 - Invalid JSON is replaced with valid fallback structures
 - All temporary files are cleaned up automatically
+- Helpful hints are provided when authentication or configuration issues occur
 
 ## Security Considerations
 
@@ -208,8 +235,17 @@ Set the repository manually: `export MAXREVIEW_REPO=owner/repo`
 ### "Missing required dependencies"
 Install the missing tools listed in the error message.
 
-### AI model returns non-JSON output
-The script will automatically handle this by creating an empty review. Check the stderr files in the worktree directory for details.
+### AI model fails or returns non-JSON output
+The script will automatically handle this by creating an empty review. Error details are displayed in the terminal output, including:
+- Docker-level errors (if Docker command failed)
+- Container stderr output (errors from the AI CLI tool)
+- Helpful hints for common issues (missing/invalid credentials)
+
+Common causes:
+- Missing authentication: Run the CLI auth command (e.g., `claude auth` for Claude)
+- Invalid credentials in `~/.claude/`, `~/.codex/`, or `~/.gemini/`
+- Network connectivity issues
+- API quota/rate limiting
 
 ## Contributing
 
