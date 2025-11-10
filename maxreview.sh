@@ -522,11 +522,21 @@ run_model_review() {
 
     local prompt="You are conducting a comprehensive code review for PR #${SELECTED_PR} in repository ${REPO}.
 
+Available tools at your disposal:
+- gh: GitHub CLI for fetching PR details, diffs, and comments
+- rg (ripgrep): Fast text search (better alternative to grep)
+- fd: Fast file finder (better alternative to find)
+- tree: Display directory structure
+- fastmod: Fast code refactoring tool for large-scale changes
+- ast-grep (sg): AST-based code search and manipulation
+- git, jq, and standard Unix tools
+
 Your task:
 1. Use the gh command to gather all context about this PR:
    - Run 'gh pr view ${SELECTED_PR} --json title,body,author,number' to get PR details
    - Run 'gh pr diff ${SELECTED_PR}' to see the code changes
    - Run 'gh api repos/${REPO}/pulls/${SELECTED_PR}/comments --paginate' to get review comments
+   - Use rg, fd, tree, or ast-grep to explore the codebase and understand context
    - Analyze the files changed in the current working directory
 
 2. Review the code for:

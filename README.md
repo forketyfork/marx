@@ -198,11 +198,11 @@ git worktree remove ../pr-123-feature-branch
 ## Docker Image
 
 The script builds a Docker image containing:
-- Claude CLI
-- Codex CLI
-- Gemini CLI
-- GitHub CLI (`gh`)
-- Other necessary tools
+- **AI CLI Tools**: Claude, Codex, Gemini
+- **GitHub Tools**: `gh` (GitHub CLI)
+- **Search & Navigation**: `rg` (ripgrep), `fd`, `tree`
+- **Code Refactoring**: `fastmod`, `ast-grep` (with `sg` alias)
+- **Development Tools**: git, jq, and other utilities
 
 The image is built automatically on first run using the Dockerfile in this repository.
 
