@@ -10,6 +10,7 @@ readonly MAGENTA='\033[0;35m'
 readonly CYAN='\033[0;36m'
 readonly BOLD='\033[1m'
 readonly RESET='\033[0m'
+readonly DOCKER_IMAGE="maxreview:latest"
 
 # Function to print colored messages
 print_info() {
@@ -30,6 +31,38 @@ print_warning() {
 
 print_header() {
     echo -e "\n${BOLD}${MAGENTA}$1${RESET}\n"
+}
+
+extract_repo_slug() {
+    local url="${1:-}"
+    local trimmed=""
+
+    if [[ -z "$url" ]]; then
+        return 1
+    fi
+
+    if [[ "$url" =~ ^git@([^:]+):(.+)$ ]]; then
+        trimmed="${BASH_REMATCH[2]}"
+    elif [[ "$url" =~ ^ssh://git@([^/]+)/(.+)$ ]]; then
+        trimmed="${BASH_REMATCH[2]}"
+    elif [[ "$url" =~ ^https?://[^/]+/(.+)$ ]]; then
+        trimmed="${BASH_REMATCH[1]}"
+    fi
+
+    if [[ -z "$trimmed" ]]; then
+        return 1
+    fi
+
+    trimmed="${trimmed%.git}"
+    trimmed="${trimmed#/}"
+    trimmed="${trimmed%/}"
+
+    if [[ -z "$trimmed" ]]; then
+        return 1
+    fi
+
+    echo "$trimmed"
+    return 0
 }
 
 cleanup() {
@@ -56,16 +89,8 @@ check_dependencies() {
         missing_deps+=("jq")
     fi
 
-    if ! command -v claude &> /dev/null; then
-        missing_deps+=("claude (Claude CLI)")
-    fi
-
-    if ! command -v codex &> /dev/null; then
-        missing_deps+=("codex (Codex CLI)")
-    fi
-
-    if ! command -v gemini &> /dev/null; then
-        missing_deps+=("gemini (Gemini CLI)")
+    if ! command -v docker &> /dev/null; then
+        missing_deps+=("docker")
     fi
 
     if [ ${#missing_deps[@]} -ne 0 ]; then
@@ -73,6 +98,24 @@ check_dependencies() {
         echo -e "${CYAN}Please install them and try again.${RESET}"
         exit 1
     fi
+}
+
+build_docker_image() {
+    if docker image inspect "${DOCKER_IMAGE}" &> /dev/null; then
+        print_info "Docker image ${DOCKER_IMAGE} already exists"
+        return 0
+    fi
+
+    print_info "Building Docker image ${DOCKER_IMAGE}..."
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+    if ! docker build -t "${DOCKER_IMAGE}" "${script_dir}"; then
+        print_error "Failed to build Docker image"
+        exit 1
+    fi
+
+    print_success "Docker image built successfully"
 }
 
 show_usage() {
@@ -85,9 +128,11 @@ show_usage() {
     echo "  - git"
     echo "  - gh (GitHub CLI)"
     echo "  - jq"
-    echo "  - claude (Claude CLI)"
-    echo "  - codex (Codex CLI)"
-    echo "  - gemini (Gemini CLI)"
+    echo "  - docker"
+    echo ""
+    echo "Environment Variables:"
+    echo "  GITHUB_TOKEN     GitHub API token (required for container access)"
+    echo "  MAXREVIEW_REPO   Optional owner/name override when auto-detect fails"
     echo ""
     echo "Options:"
     echo "  -h, --help    Show this help message"
@@ -99,6 +144,13 @@ if [[ "${1:-}" == "-h" ]] || [[ "${1:-}" == "--help" ]]; then
 fi
 
 check_dependencies
+build_docker_image
+
+# Check if GITHUB_TOKEN is set
+if [ -z "${GITHUB_TOKEN:-}" ]; then
+    print_warning "GITHUB_TOKEN environment variable is not set"
+    print_info "The AI agents may not be able to access GitHub API inside the container"
+fi
 
 # Check if we're in a git repository
 if ! git rev-parse --git-dir > /dev/null 2>&1; then
@@ -106,27 +158,91 @@ if ! git rev-parse --git-dir > /dev/null 2>&1; then
     exit 1
 fi
 
-# Get repository information
+# Determine repository slug
 print_info "Detecting repository..."
-REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null)
+REPO_SOURCE=""
+REPO="${MAXREVIEW_REPO:-}"
+
+if [ -n "$REPO" ]; then
+    REPO_SOURCE="environment variable MAXREVIEW_REPO"
+else
+    GH_ERROR=$(mktemp)
+    if REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>"${GH_ERROR}"); then
+        REPO_SOURCE="gh repo view"
+    else
+        if [ -s "${GH_ERROR}" ]; then
+            print_warning "gh repo view failed, attempting to infer repository from git remote"
+            print_warning "Error details:"
+            cat "${GH_ERROR}" >&2
+        else
+            print_warning "gh repo view failed with no additional details, attempting git remote fallback"
+        fi
+    fi
+    rm -f "${GH_ERROR}"
+fi
+
 if [ -z "$REPO" ]; then
-    print_error "Could not detect GitHub repository. Make sure you're in a valid repo with gh CLI configured."
+    remote_url=$(git remote get-url origin 2>/dev/null || git remote -v | awk 'NR==1 {print $2}')
+    if [ -n "${remote_url:-}" ]; then
+        if fallback_repo=$(extract_repo_slug "$remote_url"); then
+            REPO="$fallback_repo"
+            REPO_SOURCE="git remote"
+        fi
+    fi
+fi
+
+if [ -z "$REPO" ]; then
+    print_error "Unable to determine repository automatically."
+    print_info "Set MAXREVIEW_REPO (e.g. owner/repo) and rerun."
     exit 1
 fi
-print_success "Repository: ${BOLD}${REPO}${RESET}"
+
+case "$REPO_SOURCE" in
+    "environment variable MAXREVIEW_REPO")
+        print_success "Repository: ${BOLD}${REPO}${RESET} (from ${REPO_SOURCE})"
+        ;;
+    "git remote")
+        print_warning "Using repository inferred from git remote"
+        print_success "Repository: ${BOLD}${REPO}${RESET}"
+        ;;
+    *)
+        print_success "Repository: ${BOLD}${REPO}${RESET}"
+        ;;
+esac
 
 # Get current GitHub user
 print_info "Getting your GitHub username..."
-CURRENT_USER=$(gh api user --jq '.login' 2>/dev/null)
-if [ -z "$CURRENT_USER" ]; then
+GH_ERROR=$(mktemp)
+if ! CURRENT_USER=$(gh api user --jq '.login' 2>"${GH_ERROR}"); then
     print_error "Could not get GitHub username. Make sure gh CLI is authenticated."
+    if [ -s "${GH_ERROR}" ]; then
+        print_error "Error details:"
+        cat "${GH_ERROR}" >&2
+    fi
+    rm -f "${GH_ERROR}"
     exit 1
 fi
+if [ -z "$CURRENT_USER" ]; then
+    print_error "GitHub CLI returned an empty username."
+    rm -f "${GH_ERROR}"
+    exit 1
+fi
+rm -f "${GH_ERROR}"
 print_success "Current user: ${BOLD}${CURRENT_USER}${RESET}"
 
 # Fetch PRs with reviewers
 print_header "🔍 Fetching open PRs with reviewers (excluding yours)..."
-PRS=$(gh pr list --repo "$REPO" --state open --json number,title,headRefName,author,reviewRequests,reviews,additions,deletions --limit 100)
+GH_ERROR=$(mktemp)
+if ! PRS=$(gh pr list --repo "$REPO" --state open --json number,title,headRefName,author,reviewRequests,reviews,additions,deletions --limit 100 2>"${GH_ERROR}"); then
+    print_error "Failed to fetch pull requests."
+    if [ -s "${GH_ERROR}" ]; then
+        print_error "Error details:"
+        cat "${GH_ERROR}" >&2
+    fi
+    rm -f "${GH_ERROR}"
+    exit 1
+fi
+rm -f "${GH_ERROR}"
 
 # Filter PRs that:
 # 1. Have at least one reviewer (either requested or completed review)
@@ -252,8 +368,9 @@ print_success "Fetched commit: ${COMMIT_SHA:0:8}"
 print_info "Returning to ${ORIGINAL_BRANCH}..."
 git checkout "$ORIGINAL_BRANCH" > /dev/null 2>&1
 
-# Create worktree directory name
-WORKTREE_DIR="pr-${SELECTED_PR}-${SELECTED_BRANCH}"
+# Create worktree directory name, sanitizing branch name (replace / with -)
+SANITIZED_BRANCH="${SELECTED_BRANCH//\//-}"
+WORKTREE_DIR="pr-${SELECTED_PR}-${SANITIZED_BRANCH}"
 WORKTREE_PATH="../${WORKTREE_DIR}"
 
 # Check if worktree is registered in git (even if directory doesn't exist)
@@ -384,35 +501,118 @@ Ensure your response is ONLY valid JSON, no additional text before or after."
 
     local temp_output
     local exit_code
-    local stderr_file="${output_file}.stderr"
+    local stderr_file
+    local stderr_path
+    local worktree_abs_path
+    local home_dir
+    local home_path
+    local host_uid
+    local host_gid
 
-    case "$model_cmd" in
-        claude)
-            temp_output=$(cd "${WORKTREE_PATH}" && claude --output-format text 2>"${stderr_file}" <<EOF
-${prompt}
-EOF
-)
-            exit_code=$?
-            ;;
-        codex)
-            temp_output=$(cd "${WORKTREE_PATH}" && codex exec 2>"${stderr_file}" <<EOF
-${prompt}
-EOF
-)
-            exit_code=$?
-            ;;
-        gemini)
-            temp_output=$(cd "${WORKTREE_PATH}" && gemini --output-format text 2>"${stderr_file}" <<EOF
-${prompt}
-EOF
-)
-            exit_code=$?
-            ;;
-        *)
-            print_error "Unknown model command: ${model_cmd}"
-            exit_code=1
-            ;;
-    esac
+    stderr_file="$(basename "${output_file}").stderr"
+    stderr_path="${WORKTREE_PATH}/${stderr_file}"
+    worktree_abs_path="$(cd "${WORKTREE_PATH}" && pwd)"
+    home_dir=".maxreview-home-${model_cmd}"
+    home_path="${WORKTREE_PATH}/${home_dir}"
+    mkdir -p "${home_path}"
+    host_uid=$(id -u)
+    host_gid=$(id -g)
+
+    local prompt_file
+    prompt_file=$(mktemp "${WORKTREE_PATH}/prompt-${model_cmd}.XXXXXX.txt")
+    printf '%s\n' "$prompt" > "$prompt_file"
+
+    local runner_script
+    runner_script=$(mktemp "${WORKTREE_PATH}/run-${model_cmd}.XXXXXX.sh")
+    cat > "$runner_script" <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+MODEL_CMD="$1"
+PROMPT_FILE="$2"
+STDERR_FILE="$3"
+
+mkdir -p "$(dirname "$STDERR_FILE")"
+: "${HOME_OVERRIDE:=/workspace}"
+export HOME="$HOME_OVERRIDE"
+: > "$STDERR_FILE"
+
+setup_credentials() {
+    local source_dir="$1"
+    local target_dir="$2"
+
+    if [[ -n "$source_dir" && -d "$source_dir" ]]; then
+        mkdir -p "$target_dir"
+        cp -a "$source_dir"/. "$target_dir"/
+    else
+        mkdir -p "$target_dir"
+    fi
+}
+
+case "$MODEL_CMD" in
+    claude)
+        setup_credentials "${CLAUDE_CONFIG_SRC:-}" "$HOME/.claude"
+        claude --output-format text --dangerously-skip-permissions < "$PROMPT_FILE" 2>"$STDERR_FILE"
+        ;;
+    codex)
+        setup_credentials "${CODEX_CONFIG_SRC:-}" "$HOME/.codex"
+        codex exec --yolo < "$PROMPT_FILE" 2>"$STDERR_FILE"
+        ;;
+    gemini)
+        setup_credentials "${GEMINI_CONFIG_SRC:-}" "$HOME/.gemini"
+        gemini --output-format text --yolo < "$PROMPT_FILE" 2>"$STDERR_FILE"
+        ;;
+    *)
+        echo "Unknown model command: $MODEL_CMD" >&2
+        exit 1
+        ;;
+esac
+SCRIPT
+    chmod +x "$runner_script"
+
+    local runner_basename
+    local prompt_basename
+    local stderr_basename
+
+    runner_basename=$(basename "$runner_script")
+    prompt_basename=$(basename "$prompt_file")
+    stderr_basename=$(basename "$stderr_path")
+
+    local docker_args=(
+        docker run --rm
+        --user "${host_uid}:${host_gid}"
+        -v "${worktree_abs_path}:/workspace"
+        -e "GITHUB_TOKEN=${GITHUB_TOKEN:-}"
+        -e "HOME_OVERRIDE=/workspace/${home_dir}"
+        -w /workspace
+    )
+
+    if [ -d "${HOME}/.claude" ]; then
+        docker_args+=(-v "${HOME}/.claude:/host-configs/claude:ro")
+        docker_args+=(-e "CLAUDE_CONFIG_SRC=/host-configs/claude")
+    fi
+
+    if [ -d "${HOME}/.codex" ]; then
+        docker_args+=(-v "${HOME}/.codex:/host-configs/codex:ro")
+        docker_args+=(-e "CODEX_CONFIG_SRC=/host-configs/codex")
+    fi
+
+    if [ -d "${HOME}/.gemini" ]; then
+        docker_args+=(-v "${HOME}/.gemini:/host-configs/gemini:ro")
+        docker_args+=(-e "GEMINI_CONFIG_SRC=/host-configs/gemini")
+    fi
+
+    docker_args+=(
+        "${DOCKER_IMAGE}"
+        /bin/bash "/workspace/${runner_basename}" "$model_cmd" "/workspace/${prompt_basename}" "/workspace/${stderr_basename}"
+    )
+
+    if temp_output=$("${docker_args[@]}"); then
+        exit_code=0
+    else
+        exit_code=$?
+    fi
+
+    rm -f "$prompt_file" "$runner_script"
 
     if [ $exit_code -eq 0 ] && [ -n "$temp_output" ]; then
         # Try to extract JSON from output (in case there are extra messages)
@@ -440,18 +640,18 @@ EOF
         fi
 
         # Clean up stderr file if it's empty or only contains benign messages
-        if [ -f "${stderr_file}" ]; then
-            if [ ! -s "${stderr_file}" ]; then
-                rm -f "${stderr_file}"
-            elif ! grep -v "Loaded cached credentials\|stdout is not a terminal\|Error executing tool" "${stderr_file}" | grep -q .; then
-                rm -f "${stderr_file}"
+        if [ -f "${stderr_path}" ]; then
+            if [ ! -s "${stderr_path}" ]; then
+                rm -f "${stderr_path}"
+            elif ! grep -v "Loaded cached credentials\|stdout is not a terminal\|YOLO mode is enabled" "${stderr_path}" | grep -q .; then
+                rm -f "${stderr_path}"
             fi
         fi
     else
         print_error "${model_name} analysis failed"
-        if [ -f "${stderr_file}" ] && [ -s "${stderr_file}" ]; then
+        if [ -f "${stderr_path}" ] && [ -s "${stderr_path}" ]; then
             print_warning "Error details:"
-            cat "${stderr_file}" >&2
+            cat "${stderr_path}" >&2
         fi
         # Always write valid JSON to avoid breaking merge step
         echo "{\"pr_summary\":{\"number\":${SELECTED_PR},\"title\":\"Error\",\"description\":\"${model_name} analysis failed\"},\"issues\":[]}" > "${output_file}"
