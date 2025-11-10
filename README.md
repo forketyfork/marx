@@ -21,7 +21,77 @@ The following tools must be installed:
 - `jq` - JSON processing
 - `docker` - Container runtime
 
+## Quick Start with Nix (Recommended for Development)
+
+If you have [Nix](https://nixos.org/download.html) with flakes enabled:
+
+```bash
+# Clone the repository
+git clone https://github.com/forketyfork/maxreview.git
+cd maxreview
+
+# Enter the development environment
+nix develop
+
+# Or use direnv for automatic environment loading
+direnv allow
+```
+
+The Nix flake provides:
+- Python 3.12 with all dependencies
+- System tools (git, gh, jq, docker)
+- Development tools (pytest, black, ruff, mypy)
+- Just command runner for common tasks
+
+### Using Just Commands
+
+```bash
+# See all available commands
+just
+
+# Run linters
+just lint
+
+# Run tests
+just test
+
+# Run maxreview
+just run
+
+# Install package in editable mode
+just install
+
+# Check bash scripts
+just check-sh
+
+# Run all checks (CI equivalent)
+just check
+```
+
 ## Installation
+
+### Option 1: Python Version (Recommended)
+
+1. Clone this repository
+2. Install dependencies:
+   ```bash
+   pip install -e .
+   # Or for development with testing tools:
+   pip install -e ".[dev]"
+   ```
+3. Run the tool:
+   ```bash
+   maxreview
+   ```
+
+The Python version offers:
+- Better error handling and user feedback
+- Enhanced terminal UI with rich formatting
+- Modular, maintainable codebase
+- Full type safety with Python 3.12+
+- Comprehensive test suite
+
+### Option 2: Bash Script (Original)
 
 1. Clone this repository
 2. Make the script executable: `chmod +x maxreview.sh`
@@ -30,6 +100,17 @@ The following tools must be installed:
 The script will automatically build the required Docker image on first run.
 
 ## Environment Variables
+
+### Setting up Environment Variables
+
+Copy the example environment file and fill in your credentials:
+
+```bash
+cp .env.example .env
+# Edit .env with your API keys and tokens
+```
+
+If using direnv (recommended), the `.env` file will be automatically loaded.
 
 ### Required
 - `GITHUB_TOKEN` - GitHub API token (required for container access to GitHub API)
@@ -69,18 +150,58 @@ These directories are mounted read-only into the Docker container during executi
 
 ## Usage
 
+### Python Version
+
+```bash
+maxreview [OPTIONS]
+```
+
+#### Options
+
+- `--help` - Show help message and exit
+- `--version` - Show version and exit
+- `--pr <number>` - Specify PR number directly (skip interactive selection)
+- `--agent <agents>` - Comma-separated list of agents to run (claude,codex,gemini)
+  - Default: all agents
+- `--resume` - Reuse artifacts from the previous run and skip AI execution
+
+#### Examples
+
+```bash
+# Interactive mode with all agents (default)
+maxreview
+
+# Review PR #123 with all agents
+maxreview --pr 123
+
+# Review PR #123 with Claude only
+maxreview --pr 123 --agent claude
+
+# Interactive mode with Codex and Gemini
+maxreview --agent codex,gemini
+
+# Review specific PR with multiple selected agents
+maxreview --pr 456 --agent claude,gemini
+
+# Resume from previous run without rerunning agents
+maxreview --resume --pr 123
+```
+
+### Bash Script Version
+
 ```bash
 ./maxreview.sh [OPTIONS]
 ```
 
-### Options
+#### Options
 
 - `-h, --help` - Show help message
 - `--pr <number>` - Specify PR number directly (skip interactive selection)
 - `--agent <agents>` - Comma-separated list of agents to run (claude,codex,gemini)
   - Default: all agents
+- `--resume` - Reuse artifacts from the previous run and skip AI execution
 
-### Examples
+#### Examples
 
 ```bash
 # Interactive mode with all agents (default)
@@ -97,6 +218,9 @@ These directories are mounted read-only into the Docker container during executi
 
 # Review specific PR with multiple selected agents
 ./maxreview.sh --pr 456 --agent claude,gemini
+
+# Resume from previous run
+./maxreview.sh --resume --pr 123
 ```
 
 ## How It Works
@@ -272,9 +396,114 @@ Common causes:
 
 **Tip**: For CI/CD environments, using API key environment variables is more reliable than local configuration directories.
 
+## Development & Testing
+
+### Nix Development Workflow (Recommended)
+
+The project includes a Nix flake for reproducible development environments:
+
+```bash
+# Enter development shell
+nix develop
+
+# Or use direnv for automatic loading (recommended)
+echo "use flake" > .envrc
+direnv allow
+
+# Use just for common tasks
+just             # List all commands
+just check       # Run all checks (lint + type-check + test)
+just lint        # Run linters
+just test        # Run tests
+just run --pr 123  # Run maxreview
+```
+
+#### Setting up direnv
+
+1. Install direnv: `nix-env -iA nixpkgs.direnv` or see [direnv installation](https://direnv.net/docs/installation.html)
+2. Add hook to your shell (e.g., `eval "$(direnv hook bash)"` for bash)
+3. Allow the directory: `direnv allow`
+
+Now the environment will automatically load when you `cd` into the project!
+
+#### Just Command Reference
+
+```bash
+just install       # Install package in editable mode
+just lint          # Run all linters (black, ruff, mypy)
+just format        # Format code with black
+just fix           # Auto-fix linting issues
+just test          # Run all tests
+just test-cov      # Run tests with coverage
+just test-file FILE  # Run specific test file
+just check-sh      # Check bash scripts
+just clean         # Clean build artifacts
+just docker-build  # Build Docker image
+just info          # Show environment info
+```
+
+### Python Version
+
+The Python codebase includes a comprehensive test suite. To run tests manually:
+
+```bash
+# Install development dependencies
+pip install -e ".[dev]"
+
+# Run tests with coverage
+pytest
+
+# Run tests with verbose output
+pytest -v
+
+# Run specific test file
+pytest tests/test_github.py
+
+# Type checking with mypy
+mypy maxreview
+
+# Code formatting with black
+black maxreview tests
+
+# Linting with ruff
+ruff check maxreview tests
+```
+
+### Project Structure
+
+```
+maxreview/
+├── maxreview/          # Main package
+│   ├── __init__.py
+│   ├── cli.py          # CLI entry point and orchestration
+│   ├── config.py       # Configuration and constants
+│   ├── docker_runner.py # Docker container orchestration
+│   ├── exceptions.py   # Custom exceptions
+│   ├── github.py       # GitHub API client
+│   ├── review.py       # Review processing and merging
+│   └── ui.py           # Terminal UI and formatting
+├── tests/              # Test suite
+│   ├── conftest.py     # Pytest fixtures
+│   ├── test_github.py  # GitHub client tests
+│   └── test_review.py  # Review processing tests
+├── pyproject.toml      # Project configuration
+├── requirements.txt    # Dependencies
+└── README.md           # This file
+```
+
 ## Contributing
 
 Contributions are welcome! Please ensure:
+
+### For Python Code:
+- Code passes `mypy` type checking
+- Code passes `ruff` linting
+- Code is formatted with `black`
+- Tests pass with `pytest`
+- New features include tests
+- Follow Python best practices and PEP 8
+
+### For Bash Scripts:
 - Scripts pass `shellcheck` validation
 - Scripts pass `bash -n` syntax checking
 - Follow bash best practices
