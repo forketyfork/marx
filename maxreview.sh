@@ -480,6 +480,13 @@ run_model_review() {
     local output_file="$3"
     local agent_name="$4"
 
+    local review_output_host="${output_file}"
+    local review_output_container="${CONTAINER_RUNNER_DIR}/$(basename "$output_file")"
+    local raw_output_file="${RUN_PATH}/${model_cmd}-raw.jsonl"
+
+    rm -f "${review_output_host}" "${raw_output_file}"
+    mkdir -p "$(dirname "${review_output_host}")"
+
     local prompt="You are conducting a comprehensive code review for PR #${SELECTED_PR} in repository ${REPO}.
 
 Available tools at your disposal:
@@ -512,7 +519,7 @@ Your task:
 3. Take the following considerations into account:
    - If you find a bug, consider if it was possible to catch this bug using tests or linting; propose a respective improvement as a separate issue.
 
-4. Output your findings in valid JSON format with this exact structure:
+4. Prepare your findings in valid JSON format with this exact structure:
 {
   \"pr_summary\": {
     \"number\": <pr_number>,
@@ -537,7 +544,8 @@ Priority definitions:
 - P1: Important issues that should be fixed (logic bugs, performance problems, poor error handling)
 - P2: Nice-to-have improvements (code style, minor optimizations, suggestions)
 
-Ensure your response is ONLY valid JSON, no additional text before or after."
+5. Write the JSON to '${review_output_container}'. The file must contain only the JSON object described above (no Markdown fences or extra commentary).
+6. After writing the file, validate that it is well-formed JSON, then respond with a short confirmation message (no JSON in the message body)."
 
     print_info "Starting ${model_name} analysis..."
 
@@ -569,6 +577,7 @@ COMMIT_SHA="$6"
 HOST_UID="${HOST_UID:-}"
 HOST_GID="${HOST_GID:-}"
 CONTAINER_RUNNER_DIR="${CONTAINER_RUNNER_DIR:-/runner}"
+MODEL_REVIEW_PATH="${MODEL_REVIEW_PATH:-${CONTAINER_RUNNER_DIR}/${MODEL_CMD}-review.json}"
 
 if [ -z "$HOST_UID" ] || [ "$HOST_UID" = "0" ]; then
     HOST_UID=1000
@@ -632,6 +641,10 @@ export HOME="$HOME_OVERRIDE"
 
 : > "$STDERR_FILE"
 exec 2>>"$STDERR_FILE"
+
+: "${MODEL_REVIEW_PATH:=/workspace/${MODEL_CMD}-review.json}"
+mkdir -p "$(dirname "$MODEL_REVIEW_PATH")"
+rm -f "$MODEL_REVIEW_PATH"
 
 setup_credentials() {
     local source_dir="$1"
@@ -700,7 +713,7 @@ cd /workspace/repo
 case "$MODEL_CMD" in
     claude)
         setup_credentials "${CLAUDE_CONFIG_SRC:-}" "$HOME/.claude"
-        claude --print --output-format text --dangerously-skip-permissions < "$PROMPT_FILE"
+        claude --print --output-format stream-json --verbose --dangerously-skip-permissions < "$PROMPT_FILE"
         ;;
     codex)
         setup_credentials "${CODEX_CONFIG_SRC:-}" "$HOME/.codex"
@@ -724,8 +737,8 @@ if [ -z "${HOME_OVERRIDE:-}" ]; then
     HOME_OVERRIDE="/workspace"
 fi
 
-printf -v su_command "MODEL_CMD=%q PROMPT_FILE=%q STDERR_FILE=%q REPO_SLUG=%q PR_NUMBER=%q COMMIT_SHA=%q HOME_OVERRIDE=%q CLAUDE_CONFIG_SRC=%q CODEX_CONFIG_SRC=%q GEMINI_CONFIG_SRC=%q /tmp/run-as-user.sh" \
-    "$MODEL_CMD" "$PROMPT_FILE" "$STDERR_FILE" "$REPO_SLUG" "$PR_NUMBER" "$COMMIT_SHA" "$HOME_OVERRIDE" "${CLAUDE_CONFIG_SRC:-}" "${CODEX_CONFIG_SRC:-}" "${GEMINI_CONFIG_SRC:-}"
+printf -v su_command "MODEL_CMD=%q PROMPT_FILE=%q STDERR_FILE=%q REPO_SLUG=%q PR_NUMBER=%q COMMIT_SHA=%q HOME_OVERRIDE=%q MODEL_REVIEW_PATH=%q CLAUDE_CONFIG_SRC=%q CODEX_CONFIG_SRC=%q GEMINI_CONFIG_SRC=%q /tmp/run-as-user.sh" \
+    "$MODEL_CMD" "$PROMPT_FILE" "$STDERR_FILE" "$REPO_SLUG" "$PR_NUMBER" "$COMMIT_SHA" "$HOME_OVERRIDE" "${MODEL_REVIEW_PATH}" "${CLAUDE_CONFIG_SRC:-}" "${CODEX_CONFIG_SRC:-}" "${GEMINI_CONFIG_SRC:-}"
 
 su "$TARGET_USER" -c "$su_command"
 SCRIPT
@@ -758,6 +771,7 @@ SCRIPT
         -e "HOST_UID=${host_uid}"
         -e "HOST_GID=${host_gid}"
         -e "CONTAINER_RUNNER_DIR=${CONTAINER_RUNNER_DIR}"
+        -e "MODEL_REVIEW_PATH=${review_output_container}"
         -w /workspace
     )
 
@@ -791,26 +805,31 @@ SCRIPT
 
     rm -f "$prompt_file" "$runner_script"
 
-    if [ $exit_code -eq 0 ] && [ -n "$temp_output" ]; then
-        local json_output
-        json_output=$(echo "$temp_output" | jq -s '.[0]' 2>/dev/null)
+    printf '%s\n' "$temp_output" > "$raw_output_file"
 
-        if [ -n "$json_output" ] && [ "$json_output" != "null" ]; then
-            echo "$json_output" > "${output_file}"
-            print_success "${model_name} analysis completed"
-        else
-            json_output=$(echo "$temp_output" | awk '
-                /^{/ { flag=1; json=$0; next }
-                flag { json=json"\n"$0 }
-                /^}/ && flag { print json"\n}"; exit }
-            ')
-            if [ -n "$json_output" ] && echo "$json_output" | jq empty 2>/dev/null; then
-                echo "$json_output" | jq '.' > "${output_file}"
+    if [ $exit_code -eq 0 ]; then
+        local review_success="false"
+        local review_failure_reason=""
+
+        if [ -f "${review_output_host}" ]; then
+            if jq empty "${review_output_host}" 2>/dev/null; then
+                review_success="true"
                 print_success "${model_name} analysis completed"
             else
-                print_warning "${model_name} returned non-JSON output, using empty review"
-                echo "{\"pr_summary\":{\"number\":${SELECTED_PR},\"title\":\"Non-JSON output\",\"description\":\"${model_name} returned non-JSON output\"},\"issues\":[]}" > "${output_file}"
+                print_warning "${model_name} produced invalid JSON in ${review_output_host}. Keeping original as ${review_output_host}.invalid"
+                mv "${review_output_host}" "${review_output_host}.invalid" 2>/dev/null || true
+                review_failure_reason="produced invalid JSON"
             fi
+        else
+            print_warning "${model_name} did not create the expected review file (${review_output_host})"
+            review_failure_reason="did not create the expected review file"
+        fi
+
+        if [ "$review_success" = "false" ]; then
+            if [ -z "$review_failure_reason" ]; then
+                review_failure_reason="encountered an unknown error"
+            fi
+            echo "{\"pr_summary\":{\"number\":${SELECTED_PR},\"title\":\"Error\",\"description\":\"${model_name} ${review_failure_reason}\"},\"issues\":[]}" > "${output_file}"
         fi
 
         if [ -f "${stderr_path}" ]; then
