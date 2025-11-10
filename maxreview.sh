@@ -610,10 +610,21 @@ MODEL_CMD="$1"
 PROMPT_FILE="$2"
 STDERR_FILE="$3"
 
+# Create user with matching UID/GID if it doesn't exist
+if ! getent passwd maxreview >/dev/null 2>&1; then
+    groupadd -g "$HOST_GID" maxreview 2>/dev/null || true
+    useradd -u "$HOST_UID" -g "$HOST_GID" -m -s /bin/bash -d /home/maxreview maxreview 2>/dev/null || true
+fi
+
+# Prepare directories and files with proper ownership
 mkdir -p "$(dirname "$STDERR_FILE")"
-: "${HOME_OVERRIDE:=/workspace}"
-export HOME="$HOME_OVERRIDE"
 : > "$STDERR_FILE"
+chown -R maxreview:maxreview "$STDERR_FILE" "$(dirname "$STDERR_FILE")" 2>/dev/null || true
+
+# Create wrapper script to run as maxreview user
+cat > /tmp/run-as-user.sh <<'INNERSCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
 
 setup_credentials() {
     local source_dir="$1"
@@ -627,10 +638,13 @@ setup_credentials() {
     fi
 }
 
+: "${HOME_OVERRIDE:=/workspace}"
+export HOME="$HOME_OVERRIDE"
+
 case "$MODEL_CMD" in
     claude)
         setup_credentials "${CLAUDE_CONFIG_SRC:-}" "$HOME/.claude"
-        claude --print --output-format text < "$PROMPT_FILE" 2>"$STDERR_FILE"
+        claude --print --output-format text --dangerously-skip-permissions < "$PROMPT_FILE" 2>"$STDERR_FILE"
         ;;
     codex)
         setup_credentials "${CODEX_CONFIG_SRC:-}" "$HOME/.codex"
@@ -645,6 +659,13 @@ case "$MODEL_CMD" in
         exit 1
         ;;
 esac
+INNERSCRIPT
+
+chmod +x /tmp/run-as-user.sh
+chown maxreview:maxreview /tmp/run-as-user.sh
+
+# Execute the inner script as the maxreview user
+exec su maxreview -c "MODEL_CMD='$MODEL_CMD' PROMPT_FILE='$PROMPT_FILE' STDERR_FILE='$STDERR_FILE' HOME_OVERRIDE='$HOME_OVERRIDE' CLAUDE_CONFIG_SRC='${CLAUDE_CONFIG_SRC:-}' CODEX_CONFIG_SRC='${CODEX_CONFIG_SRC:-}' GEMINI_CONFIG_SRC='${GEMINI_CONFIG_SRC:-}' /tmp/run-as-user.sh"
 SCRIPT
     chmod +x "$runner_script"
 
@@ -658,8 +679,9 @@ SCRIPT
 
     local docker_args=(
         docker run --rm
-        --user "${host_uid}:${host_gid}"
         -v "${worktree_abs_path}:/workspace"
+        -e "HOST_UID=${host_uid}"
+        -e "HOST_GID=${host_gid}"
         -e "GITHUB_TOKEN=${GITHUB_TOKEN:-}"
         -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}"
         -e "OPENAI_API_KEY=${OPENAI_API_KEY:-}"
