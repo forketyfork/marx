@@ -11,6 +11,7 @@ readonly CYAN='\033[0;36m'
 readonly BOLD='\033[1m'
 readonly RESET='\033[0m'
 readonly DOCKER_IMAGE="maxreview:latest"
+readonly CONTAINER_RUNNER_DIR="/runner"
 
 # Function to print colored messages
 print_info() {
@@ -418,100 +419,59 @@ else
     print_success "Found PR #${SELECTED_PR} with branch: ${SELECTED_BRANCH}"
 fi
 
-print_header "🚀 Setting up worktree for PR #${SELECTED_PR}"
+print_header "🚀 Preparing container workspace for PR #${SELECTED_PR}"
 
-ORIGINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-
-# Fetch the PR
-print_info "Fetching PR #${SELECTED_PR}..."
-gh pr checkout "$SELECTED_PR" --detach 2>/dev/null || {
-    print_error "Failed to fetch PR"
+print_info "Fetching PR metadata..."
+GH_ERROR=$(mktemp)
+if ! PR_METADATA=$(gh pr view "$SELECTED_PR" --repo "$REPO" --json headRefName,headRefOid 2>"${GH_ERROR}"); then
+    print_error "Failed to fetch PR metadata"
+    if [ -s "${GH_ERROR}" ]; then
+        print_error "Error details:"
+        cat "${GH_ERROR}" >&2
+    fi
+    rm -f "${GH_ERROR}"
     exit 1
-}
+fi
+rm -f "${GH_ERROR}"
 
-# Get the commit SHA
-COMMIT_SHA=$(git rev-parse HEAD)
-print_success "Fetched commit: ${COMMIT_SHA:0:8}"
+PR_HEAD_BRANCH=$(echo "$PR_METADATA" | jq -r '.headRefName')
+if [ -n "$PR_HEAD_BRANCH" ] && [ "$PR_HEAD_BRANCH" != "null" ]; then
+    SELECTED_BRANCH="$PR_HEAD_BRANCH"
+fi
+COMMIT_SHA=$(echo "$PR_METADATA" | jq -r '.headRefOid')
 
-# Go back to original branch
-print_info "Returning to ${ORIGINAL_BRANCH}..."
-git checkout "$ORIGINAL_BRANCH" > /dev/null 2>&1
-
-# Create worktree directory name, sanitizing branch name (replace / with -)
-SANITIZED_BRANCH="${SELECTED_BRANCH//\//-}"
-WORKTREE_DIR="pr-${SELECTED_PR}-${SANITIZED_BRANCH}"
-WORKTREE_PATH="../${WORKTREE_DIR}"
-
-# Check if worktree is registered in git (even if directory doesn't exist)
-WORKTREE_REGISTERED=false
-if git worktree list | grep -q "$(basename "$WORKTREE_PATH")"; then
-    WORKTREE_REGISTERED=true
+if [ -n "$COMMIT_SHA" ] && [ "$COMMIT_SHA" != "null" ]; then
+    print_success "PR head commit: ${COMMIT_SHA:0:8}"
+else
+    print_warning "Unable to determine the PR head commit SHA"
+    COMMIT_SHA=""
 fi
 
-# Check if worktree needs cleanup
-if [ "$WORKTREE_REGISTERED" = true ] || [ -d "$WORKTREE_PATH" ]; then
-    if [ "$WORKTREE_REGISTERED" = true ]; then
-        print_warning "Worktree is registered in git: ${WORKTREE_PATH}"
-    fi
-    if [ -d "$WORKTREE_PATH" ]; then
-        print_warning "Worktree directory exists: ${WORKTREE_PATH}"
-    fi
+SANITIZED_BRANCH="${SELECTED_BRANCH//\//-}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUN_BASE_DIR="${SCRIPT_DIR}/runs"
+RUN_DIR_NAME="pr-${SELECTED_PR}-${SANITIZED_BRANCH}"
+RUN_PATH="${RUN_BASE_DIR}/${RUN_DIR_NAME}"
 
-    echo -e "${CYAN}Do you want to remove it and recreate? [y/N]:${RESET} "
+mkdir -p "${RUN_BASE_DIR}"
+
+if [ -d "${RUN_PATH}" ]; then
+    print_warning "Existing run directory detected: ${RUN_PATH}"
+    echo -e "${CYAN}Do you want to remove it and start fresh? [y/N]:${RESET} "
     read -r confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        print_info "Cleaning up existing worktree..."
-
-        # First, try to remove the worktree registration if it exists
-        if [ "$WORKTREE_REGISTERED" = true ]; then
-            if git worktree remove "$WORKTREE_PATH" --force 2>/dev/null; then
-                print_success "Removed worktree registration"
-            else
-                print_warning "Could not remove worktree, pruning stale entries..."
-                git worktree prune 2>/dev/null || true
-            fi
-        fi
-
-        # Then remove the directory if it exists
-        if [ -d "$WORKTREE_PATH" ]; then
-            rm -rf "$WORKTREE_PATH" || {
-                print_error "Failed to remove directory ${WORKTREE_PATH}"
-                exit 1
-            }
-            print_success "Removed worktree directory"
-        fi
-
-        # Final verification
-        if git worktree list | grep -q "$(basename "$WORKTREE_PATH")"; then
-            print_error "Worktree is still registered, running final prune..."
-            git worktree prune -v
-        fi
-
-        print_success "Cleanup complete"
+        rm -rf "${RUN_PATH}" || {
+            print_error "Failed to remove ${RUN_PATH}"
+            exit 1
+        }
+        print_success "Removed existing run directory"
     else
-        print_info "Aborting"
-        exit 0
+        print_info "Reusing existing run directory"
     fi
 fi
 
-# Create the worktree
-print_info "Creating worktree at ${WORKTREE_PATH}..."
-if git worktree add "$WORKTREE_PATH" "$COMMIT_SHA" > /dev/null 2>&1; then
-    print_success "Worktree created successfully! 🎉"
-else
-    print_error "Failed to create worktree"
-    print_info "Debug: Listing existing worktrees..."
-    git worktree list
-    exit 1
-fi
-
-# Symlink .claude directory if it exists
-ORIGINAL_DIR=$(pwd)
-if [ -d "${ORIGINAL_DIR}/.claude" ]; then
-    print_info "Symlinking .claude directory..."
-    ln -sf "${ORIGINAL_DIR}/.claude" "${WORKTREE_PATH}/.claude"
-    print_success ".claude directory symlinked"
-fi
+mkdir -p "${RUN_PATH}"
+print_success "Run artifacts directory: ${RUN_PATH}"
 
 # Function to run a single AI model review
 run_model_review() {
@@ -549,7 +509,10 @@ Your task:
    - Type safety issues
    - Missing error handling
 
-3. Output your findings in valid JSON format with this exact structure:
+3. Take the following considerations into account:
+   - If you find a bug, consider if it was possible to catch this bug using tests or linting; propose a respective improvement as a separate issue.
+
+4. Output your findings in valid JSON format with this exact structure:
 {
   \"pr_summary\": {
     \"number\": <pr_number>,
@@ -582,53 +545,93 @@ Ensure your response is ONLY valid JSON, no additional text before or after."
     local exit_code
     local stderr_file
     local stderr_path
-    local worktree_abs_path
-    local home_dir
-    local home_path
-    local host_uid
-    local host_gid
 
     stderr_file="$(basename "${output_file}").stderr"
-    stderr_path="${WORKTREE_PATH}/${stderr_file}"
-    worktree_abs_path="$(cd "${WORKTREE_PATH}" && pwd)"
-    home_dir=".maxreview-home-${model_cmd}"
-    home_path="${WORKTREE_PATH}/${home_dir}"
-    mkdir -p "${home_path}"
-    host_uid=$(id -u)
-    host_gid=$(id -g)
+    stderr_path="${RUN_PATH}/${stderr_file}"
 
     local prompt_file
-    prompt_file=$(mktemp "${WORKTREE_PATH}/prompt-${model_cmd}.XXXXXX.txt")
+    prompt_file=$(mktemp "${RUN_PATH}/prompt-${model_cmd}.XXXXXX.txt")
     printf '%s\n' "$prompt" > "$prompt_file"
 
     local runner_script
-    runner_script=$(mktemp "${WORKTREE_PATH}/run-${model_cmd}.XXXXXX.sh")
+    runner_script=$(mktemp "${RUN_PATH}/run-${model_cmd}.XXXXXX.sh")
     cat > "$runner_script" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
+
 MODEL_CMD="$1"
 PROMPT_FILE="$2"
 STDERR_FILE="$3"
+REPO_SLUG="$4"
+PR_NUMBER="$5"
+COMMIT_SHA="$6"
 
-# Create user with matching UID/GID if it doesn't exist
-if ! id -u maxreview >/dev/null 2>&1; then
-    # Create group if it doesn't exist, or use existing group with that GID
-    if ! getent group "$HOST_GID" >/dev/null 2>&1; then
-        groupadd -g "$HOST_GID" maxreview
-    fi
-    # Create user with the GID (either our new group or existing one)
-    useradd -u "$HOST_UID" -g "$HOST_GID" -m -s /bin/bash -d /home/maxreview maxreview
+HOST_UID="${HOST_UID:-}"
+HOST_GID="${HOST_GID:-}"
+CONTAINER_RUNNER_DIR="${CONTAINER_RUNNER_DIR:-/runner}"
+
+if [ -z "$HOST_UID" ] || [ "$HOST_UID" = "0" ]; then
+    HOST_UID=1000
 fi
 
-# Prepare directories and files with proper ownership
-mkdir -p "$(dirname "$STDERR_FILE")"
-: > "$STDERR_FILE"
-chown -R "$HOST_UID:$HOST_GID" "$STDERR_FILE" "$(dirname "$STDERR_FILE")"
+if [ -z "$HOST_GID" ] || [ "$HOST_GID" = "0" ]; then
+    HOST_GID=1000
+fi
 
-# Create wrapper script to run as maxreview user
+TARGET_USER="maxreview"
+if getent passwd "$HOST_UID" >/dev/null 2>&1; then
+    TARGET_USER="$(getent passwd "$HOST_UID" | cut -d: -f1)"
+fi
+
+    if ! getent group "$HOST_GID" >/dev/null 2>&1; then
+        if [ "$HOST_GID" -lt 1000 ]; then
+            groupadd --system -g "$HOST_GID" maxreview 2>/dev/null || true
+        else
+            groupadd -g "$HOST_GID" maxreview 2>/dev/null || true
+        fi
+    fi
+
+    if ! id -u "$TARGET_USER" >/dev/null 2>&1; then
+        useradd_args=(-u "$HOST_UID" -g "$HOST_GID" -m -s /bin/bash -d "/home/$TARGET_USER")
+        if [ "$HOST_UID" -lt 1000 ]; then
+            useradd_args+=(--system)
+        fi
+        if ! useradd "${useradd_args[@]}" "$TARGET_USER" 2>/dev/null; then
+            if ! id -u "$TARGET_USER" >/dev/null 2>&1; then
+                echo "Failed to create user ${TARGET_USER} with uid ${HOST_UID}" >&2
+                exit 1
+            fi
+        fi
+    fi
+
+mkdir -p "$(dirname "$STDERR_FILE")"
+touch "$STDERR_FILE"
+chown -R "$HOST_UID:$HOST_GID" "$(dirname "$STDERR_FILE")"
+
+if [ -d "$CONTAINER_RUNNER_DIR" ]; then
+    chown -R "$HOST_UID:$HOST_GID" "$CONTAINER_RUNNER_DIR" || true
+fi
+
+mkdir -p /workspace
+chown -R "$HOST_UID:$HOST_GID" /workspace
+
 cat > /tmp/run-as-user.sh <<'INNERSCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
+
+: "${MODEL_CMD:?MODEL_CMD is required}"
+: "${PROMPT_FILE:?PROMPT_FILE is required}"
+: "${STDERR_FILE:?STDERR_FILE is required}"
+: "${REPO_SLUG:?REPO_SLUG is required}"
+: "${PR_NUMBER:=}"
+: "${COMMIT_SHA:=}"
+
+: "${HOME_OVERRIDE:=/workspace}"
+mkdir -p "$HOME_OVERRIDE"
+export HOME="$HOME_OVERRIDE"
+
+: > "$STDERR_FILE"
+exec 2>>"$STDERR_FILE"
 
 setup_credentials() {
     local source_dir="$1"
@@ -642,21 +645,70 @@ setup_credentials() {
     fi
 }
 
-: "${HOME_OVERRIDE:=/workspace}"
-export HOME="$HOME_OVERRIDE"
+clone_repository() {
+    local repo="$1"
+    local pr_number="$2"
+    local commit_sha="$3"
+
+    export GIT_TERMINAL_PROMPT=0
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+        export GH_TOKEN="${GITHUB_TOKEN}"
+    fi
+
+    mkdir -p /workspace
+    cd /workspace
+
+    rm -rf repo
+    if ! gh repo clone "$repo" repo >/dev/null 2>&1; then
+        if ! git clone "https://github.com/${repo}.git" repo >/dev/null 2>&1; then
+            echo "Failed to clone repository ${repo}" >&2
+            return 1
+        fi
+    fi
+
+    cd repo
+
+    if [ -n "$pr_number" ]; then
+        if ! gh pr checkout "$pr_number" --detach >/dev/null 2>&1; then
+            if ! git fetch origin "pull/${pr_number}/head:pr-${pr_number}" >/dev/null 2>&1; then
+                echo "Failed to fetch PR ${pr_number}" >&2
+                return 1
+            fi
+            if ! git checkout "pr-${pr_number}" >/dev/null 2>&1; then
+                echo "Failed to checkout PR branch pr-${pr_number}" >&2
+                return 1
+            fi
+        fi
+    fi
+
+    if [ -n "$commit_sha" ]; then
+        if ! git checkout "$commit_sha" >/dev/null 2>&1; then
+            echo "Failed to checkout commit ${commit_sha}" >&2
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
+if ! clone_repository "$REPO_SLUG" "$PR_NUMBER" "$COMMIT_SHA"; then
+    exit 1
+fi
+
+cd /workspace/repo
 
 case "$MODEL_CMD" in
     claude)
         setup_credentials "${CLAUDE_CONFIG_SRC:-}" "$HOME/.claude"
-        claude --print --output-format text --dangerously-skip-permissions < "$PROMPT_FILE" 2>"$STDERR_FILE"
+        claude --print --output-format text --dangerously-skip-permissions < "$PROMPT_FILE"
         ;;
     codex)
         setup_credentials "${CODEX_CONFIG_SRC:-}" "$HOME/.codex"
-        codex exec --yolo < "$PROMPT_FILE" 2>"$STDERR_FILE"
+        codex exec --yolo < "$PROMPT_FILE"
         ;;
     gemini)
         setup_credentials "${GEMINI_CONFIG_SRC:-}" "$HOME/.gemini"
-        gemini --output-format text --yolo < "$PROMPT_FILE" 2>"$STDERR_FILE"
+        gemini --output-format text --yolo < "$PROMPT_FILE"
         ;;
     *)
         echo "Unknown model command: $MODEL_CMD" >&2
@@ -668,30 +720,44 @@ INNERSCRIPT
 chmod +x /tmp/run-as-user.sh
 chown "$HOST_UID:$HOST_GID" /tmp/run-as-user.sh
 
-# Execute the inner script as the maxreview user
-exec su maxreview -c "MODEL_CMD='$MODEL_CMD' PROMPT_FILE='$PROMPT_FILE' STDERR_FILE='$STDERR_FILE' HOME_OVERRIDE='$HOME_OVERRIDE' CLAUDE_CONFIG_SRC='${CLAUDE_CONFIG_SRC:-}' CODEX_CONFIG_SRC='${CODEX_CONFIG_SRC:-}' GEMINI_CONFIG_SRC='${GEMINI_CONFIG_SRC:-}' /tmp/run-as-user.sh"
+if [ -z "${HOME_OVERRIDE:-}" ]; then
+    HOME_OVERRIDE="/workspace"
+fi
+
+printf -v su_command "MODEL_CMD=%q PROMPT_FILE=%q STDERR_FILE=%q REPO_SLUG=%q PR_NUMBER=%q COMMIT_SHA=%q HOME_OVERRIDE=%q CLAUDE_CONFIG_SRC=%q CODEX_CONFIG_SRC=%q GEMINI_CONFIG_SRC=%q /tmp/run-as-user.sh" \
+    "$MODEL_CMD" "$PROMPT_FILE" "$STDERR_FILE" "$REPO_SLUG" "$PR_NUMBER" "$COMMIT_SHA" "$HOME_OVERRIDE" "${CLAUDE_CONFIG_SRC:-}" "${CODEX_CONFIG_SRC:-}" "${GEMINI_CONFIG_SRC:-}"
+
+su "$TARGET_USER" -c "$su_command"
 SCRIPT
     chmod +x "$runner_script"
 
     local runner_basename
     local prompt_basename
     local stderr_basename
+    local host_uid
+    local host_gid
 
     runner_basename=$(basename "$runner_script")
     prompt_basename=$(basename "$prompt_file")
     stderr_basename=$(basename "$stderr_path")
+    host_uid=$(id -u)
+    host_gid=$(id -g)
 
+    local container_name="maxreview-${model_cmd}-${SELECTED_PR}-$(date +%s%N)"
+    print_info "${model_name} container: ${container_name}"
     local docker_args=(
-        docker run --rm
-        -v "${worktree_abs_path}:/workspace"
-        -e "HOST_UID=${host_uid}"
-        -e "HOST_GID=${host_gid}"
+        docker run
+        --name "${container_name}"
+        -v "${RUN_PATH}:${CONTAINER_RUNNER_DIR}"
         -e "GITHUB_TOKEN=${GITHUB_TOKEN:-}"
         -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}"
         -e "OPENAI_API_KEY=${OPENAI_API_KEY:-}"
         -e "GOOGLE_API_KEY=${GOOGLE_API_KEY:-}"
         -e "GEMINI_API_KEY=${GEMINI_API_KEY:-}"
-        -e "HOME_OVERRIDE=/workspace/${home_dir}"
+        -e "HOME_OVERRIDE=/workspace"
+        -e "HOST_UID=${host_uid}"
+        -e "HOST_GID=${host_gid}"
+        -e "CONTAINER_RUNNER_DIR=${CONTAINER_RUNNER_DIR}"
         -w /workspace
     )
 
@@ -712,7 +778,7 @@ SCRIPT
 
     docker_args+=(
         "${DOCKER_IMAGE}"
-        /bin/bash "/workspace/${runner_basename}" "$model_cmd" "/workspace/${prompt_basename}" "/workspace/${stderr_basename}"
+        /bin/bash "${CONTAINER_RUNNER_DIR}/${runner_basename}" "$model_cmd" "${CONTAINER_RUNNER_DIR}/${prompt_basename}" "${CONTAINER_RUNNER_DIR}/${stderr_basename}" "$REPO" "$SELECTED_PR" "${COMMIT_SHA}"
     )
 
     local docker_stderr
@@ -726,7 +792,6 @@ SCRIPT
     rm -f "$prompt_file" "$runner_script"
 
     if [ $exit_code -eq 0 ] && [ -n "$temp_output" ]; then
-        # Try to extract JSON from output (in case there are extra messages)
         local json_output
         json_output=$(echo "$temp_output" | jq -s '.[0]' 2>/dev/null)
 
@@ -734,7 +799,6 @@ SCRIPT
             echo "$json_output" > "${output_file}"
             print_success "${model_name} analysis completed"
         else
-            # Try to find first valid JSON object using awk
             json_output=$(echo "$temp_output" | awk '
                 /^{/ { flag=1; json=$0; next }
                 flag { json=json"\n"$0 }
@@ -745,12 +809,10 @@ SCRIPT
                 print_success "${model_name} analysis completed"
             else
                 print_warning "${model_name} returned non-JSON output, using empty review"
-                # Always write valid JSON to avoid breaking merge step
                 echo "{\"pr_summary\":{\"number\":${SELECTED_PR},\"title\":\"Non-JSON output\",\"description\":\"${model_name} returned non-JSON output\"},\"issues\":[]}" > "${output_file}"
             fi
         fi
 
-        # Clean up stderr file if it's empty or only contains benign messages
         if [ -f "${stderr_path}" ]; then
             if [ ! -s "${stderr_path}" ]; then
                 rm -f "${stderr_path}"
@@ -763,21 +825,18 @@ SCRIPT
         print_error "${model_name} analysis failed"
         local error_shown=false
 
-        # Show docker-level errors first
         if [ -f "${docker_stderr}" ] && [ -s "${docker_stderr}" ]; then
             print_warning "Docker error details:"
             cat "${docker_stderr}" >&2
             error_shown=true
         fi
 
-        # Show container stderr
         if [ -f "${stderr_path}" ] && [ -s "${stderr_path}" ]; then
             print_warning "Container stderr:"
             cat "${stderr_path}" >&2
             error_shown=true
         fi
 
-        # If no error details were found, provide helpful hints
         if [ "$error_shown" = false ]; then
             print_warning "No error details captured. Common issues:"
             echo "  - Missing or invalid credentials in ~/.${model_cmd}/" >&2
@@ -786,7 +845,6 @@ SCRIPT
         fi
 
         rm -f "${docker_stderr}"
-        # Always write valid JSON to avoid breaking merge step
         echo "{\"pr_summary\":{\"number\":${SELECTED_PR},\"title\":\"Error\",\"description\":\"${model_name} analysis failed\"},\"issues\":[]}" > "${output_file}"
     fi
 }
@@ -840,14 +898,15 @@ fi
 
 print_header "🤖 Running automated code review with AI models: ${AGENTS_TO_RUN[*]}"
 
-CLAUDE_OUTPUT="${WORKTREE_PATH}/claude-review.json"
-CODEX_OUTPUT="${WORKTREE_PATH}/codex-review.json"
-GEMINI_OUTPUT="${WORKTREE_PATH}/gemini-review.json"
-MERGED_OUTPUT="${WORKTREE_PATH}/merged-review.json"
+CLAUDE_OUTPUT="${RUN_PATH}/claude-review.json"
+CODEX_OUTPUT="${RUN_PATH}/codex-review.json"
+GEMINI_OUTPUT="${RUN_PATH}/gemini-review.json"
+MERGED_OUTPUT="${RUN_PATH}/merged-review.json"
 
 print_info "Launching parallel reviews (this may take a few minutes)..."
 
 declare -a PIDS
+declare -a PID_AGENTS
 
 # Run selected models in parallel
 for agent in "${AGENTS_TO_RUN[@]}"; do
@@ -855,24 +914,36 @@ for agent in "${AGENTS_TO_RUN[@]}"; do
         claude)
             run_model_review "Claude" "claude" "${CLAUDE_OUTPUT}" "claude" &
             PIDS+=($!)
+            PID_AGENTS+=("claude")
             ;;
         codex)
             run_model_review "Codex" "codex" "${CODEX_OUTPUT}" "codex" &
             PIDS+=($!)
+            PID_AGENTS+=("codex")
             ;;
         gemini)
             run_model_review "Gemini" "gemini" "${GEMINI_OUTPUT}" "gemini" &
             PIDS+=($!)
+            PID_AGENTS+=("gemini")
             ;;
     esac
 done
 
 # Wait for all background jobs to complete
-for pid in "${PIDS[@]}"; do
-    wait "$pid"
+declare -a FAILED_MODELS=()
+for idx in "${!PIDS[@]}"; do
+    pid="${PIDS[$idx]}"
+    agent="${PID_AGENTS[$idx]}"
+    if ! wait "$pid"; then
+        FAILED_MODELS+=("$agent")
+    fi
 done
 
-print_success "All AI models completed their analysis! 📝"
+if [ ${#FAILED_MODELS[@]} -gt 0 ]; then
+    print_warning "Some model runs failed: ${FAILED_MODELS[*]}"
+else
+    print_success "All AI models completed their analysis! 📝"
+fi
 
 # Create empty reviews for agents that were not run
 agent_in_list() {
@@ -913,13 +984,6 @@ if [ -z "$MERGED_RESULT" ] || ! echo "$MERGED_RESULT" | jq empty 2>/dev/null; th
     MERGED_RESULT="{\"descriptions\":[{\"agent\":\"error\",\"description\":\"Failed to merge reviews\"}],\"pr_summary\":{\"number\":${SELECTED_PR},\"title\":\"Merge Error\"},\"issues\":[]}"
 fi
 echo "$MERGED_RESULT" > "${MERGED_OUTPUT}"
-
-cd "${WORKTREE_PATH}" || {
-    print_error "Failed to change to worktree directory"
-    exit 1
-}
-
-cd "${ORIGINAL_DIR}" || exit 1
 
 # Parse and display the merged review
 if echo "$MERGED_RESULT" | jq empty 2>/dev/null; then
@@ -1014,8 +1078,8 @@ else
 fi
 
 echo ""
-echo -e "${BOLD}${GREEN}To start working on this PR, run:${RESET}"
-echo -e "${CYAN}  cd ${WORKTREE_PATH}${RESET}"
+echo -e "${BOLD}${GREEN}Review artifacts directory:${RESET}"
+echo -e "${CYAN}  ${RUN_PATH}${RESET}"
 echo ""
-print_info "When you're done, you can remove the worktree with:"
-echo -e "${CYAN}  git worktree remove ${WORKTREE_PATH}${RESET}"
+print_info "Need a local checkout? Run:"
+echo -e "${CYAN}  gh pr checkout ${SELECTED_PR}${RESET}"
