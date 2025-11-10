@@ -611,15 +611,19 @@ PROMPT_FILE="$2"
 STDERR_FILE="$3"
 
 # Create user with matching UID/GID if it doesn't exist
-if ! getent passwd maxreview >/dev/null 2>&1; then
-    groupadd -g "$HOST_GID" maxreview 2>/dev/null || true
-    useradd -u "$HOST_UID" -g "$HOST_GID" -m -s /bin/bash -d /home/maxreview maxreview 2>/dev/null || true
+if ! id -u maxreview >/dev/null 2>&1; then
+    # Create group if it doesn't exist, or use existing group with that GID
+    if ! getent group "$HOST_GID" >/dev/null 2>&1; then
+        groupadd -g "$HOST_GID" maxreview
+    fi
+    # Create user with the GID (either our new group or existing one)
+    useradd -u "$HOST_UID" -g "$HOST_GID" -m -s /bin/bash -d /home/maxreview maxreview
 fi
 
 # Prepare directories and files with proper ownership
 mkdir -p "$(dirname "$STDERR_FILE")"
 : > "$STDERR_FILE"
-chown -R maxreview:maxreview "$STDERR_FILE" "$(dirname "$STDERR_FILE")" 2>/dev/null || true
+chown -R "$HOST_UID:$HOST_GID" "$STDERR_FILE" "$(dirname "$STDERR_FILE")"
 
 # Create wrapper script to run as maxreview user
 cat > /tmp/run-as-user.sh <<'INNERSCRIPT'
@@ -662,7 +666,7 @@ esac
 INNERSCRIPT
 
 chmod +x /tmp/run-as-user.sh
-chown maxreview:maxreview /tmp/run-as-user.sh
+chown "$HOST_UID:$HOST_GID" /tmp/run-as-user.sh
 
 # Execute the inner script as the maxreview user
 exec su maxreview -c "MODEL_CMD='$MODEL_CMD' PROMPT_FILE='$PROMPT_FILE' STDERR_FILE='$STDERR_FILE' HOME_OVERRIDE='$HOME_OVERRIDE' CLAUDE_CONFIG_SRC='${CLAUDE_CONFIG_SRC:-}' CODEX_CONFIG_SRC='${CODEX_CONFIG_SRC:-}' GEMINI_CONFIG_SRC='${GEMINI_CONFIG_SRC:-}' /tmp/run-as-user.sh"
