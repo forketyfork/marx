@@ -61,16 +61,11 @@ just run
 # Install package in editable mode
 just install
 
-# Check bash scripts
-just check-sh
-
 # Run all checks (CI equivalent)
 just check
 ```
 
 ## Installation
-
-### Option 1: Python Version (Recommended)
 
 1. Clone this repository
 2. Install dependencies:
@@ -83,21 +78,6 @@ just check
    ```bash
    maxreview
    ```
-
-The Python version offers:
-- Better error handling and user feedback
-- Enhanced terminal UI with rich formatting
-- Modular, maintainable codebase
-- Full type safety with Python 3.12+
-- Comprehensive test suite
-
-### Option 2: Bash Script (Original)
-
-1. Clone this repository
-2. Make the script executable: `chmod +x maxreview.sh`
-3. Run the script: `./maxreview.sh`
-
-The script will automatically build the required Docker image on first run.
 
 ## Environment Variables
 
@@ -150,22 +130,22 @@ These directories are mounted read-only into the Docker container during executi
 
 ## Usage
 
-### Python Version
-
 ```bash
 maxreview [OPTIONS]
 ```
 
-#### Options
+### Options
 
 - `--help` - Show help message and exit
 - `--version` - Show version and exit
 - `--pr <number>` - Specify PR number directly (skip interactive selection)
 - `--agent <agents>` - Comma-separated list of agents to run (claude,codex,gemini)
   - Default: all agents
+- `--repo <owner/repo>` - Repository in the format owner/repo (e.g., JetBrains/orca-ai)
+  - Overrides automatic repository detection
 - `--resume` - Reuse artifacts from the previous run and skip AI execution
 
-#### Examples
+### Examples
 
 ```bash
 # Interactive mode with all agents (default)
@@ -180,47 +160,17 @@ maxreview --pr 123 --agent claude
 # Interactive mode with Codex and Gemini
 maxreview --agent codex,gemini
 
+# Review PRs in specific repository
+maxreview --repo JetBrains/orca-ai
+
+# Review specific PR in specific repository
+maxreview --pr 123 --repo JetBrains/orca-ai
+
 # Review specific PR with multiple selected agents
 maxreview --pr 456 --agent claude,gemini
 
 # Resume from previous run without rerunning agents
 maxreview --resume --pr 123
-```
-
-### Bash Script Version
-
-```bash
-./maxreview.sh [OPTIONS]
-```
-
-#### Options
-
-- `-h, --help` - Show help message
-- `--pr <number>` - Specify PR number directly (skip interactive selection)
-- `--agent <agents>` - Comma-separated list of agents to run (claude,codex,gemini)
-  - Default: all agents
-- `--resume` - Reuse artifacts from the previous run and skip AI execution
-
-#### Examples
-
-```bash
-# Interactive mode with all agents (default)
-./maxreview.sh
-
-# Review PR #123 with all agents
-./maxreview.sh --pr 123
-
-# Review PR #123 with Claude only
-./maxreview.sh --pr 123 --agent claude
-
-# Interactive mode with Codex and Gemini
-./maxreview.sh --agent codex,gemini
-
-# Review specific PR with multiple selected agents
-./maxreview.sh --pr 456 --agent claude,gemini
-
-# Resume from previous run
-./maxreview.sh --resume --pr 123
 ```
 
 ## How It Works
@@ -325,9 +275,9 @@ All files are saved in the worktree directory:
 
 ```bash
 # Run maxreview
-./maxreview.sh
+maxreview
 
-# The script will:
+# The tool will:
 # 1. Detect your repository
 # 2. Show available PRs
 # 3. Prompt you to select one
@@ -344,7 +294,7 @@ git worktree remove ../pr-123-feature-branch
 
 ## Docker Image
 
-The script builds a Docker image containing:
+MaxReview uses a Docker image containing:
 - **AI CLI Tools**: Claude, Codex, Gemini
 - **GitHub Tools**: `gh` (GitHub CLI)
 - **Search & Navigation**: `rg` (ripgrep), `fd`, `tree`
@@ -358,7 +308,7 @@ The image is built automatically on first run using the Dockerfile in this repos
 MaxReview includes robust error handling:
 - Non-JSON outputs from AI models are handled gracefully with empty reviews
 - Failed API calls are caught and reported with detailed error messages
-- Docker-level errors and container stderr are both captured and displayed
+- Docker errors and container stderr are both captured and displayed
 - Invalid JSON is replaced with valid fallback structures
 - All temporary files are cleaned up automatically
 - Helpful hints are provided when authentication or configuration issues occur
@@ -383,8 +333,8 @@ Set the repository manually: `export MAXREVIEW_REPO=owner/repo`
 Install the missing tools listed in the error message.
 
 ### AI model fails or returns non-JSON output
-The script will automatically handle this by creating an empty review. Error details are displayed in the terminal output, including:
-- Docker-level errors (if Docker command failed)
+MaxReview will automatically handle this by creating an empty review. Error details are displayed in the terminal output, including:
+- Docker errors (if Docker command failed)
 - Container stderr output (errors from the AI CLI tool)
 - Helpful hints for common issues (missing/invalid credentials)
 
@@ -436,7 +386,6 @@ just fix           # Auto-fix linting issues
 just test          # Run all tests
 just test-cov      # Run tests with coverage
 just test-file FILE  # Run specific test file
-just check-sh      # Check bash scripts
 just clean         # Clean build artifacts
 just docker-build  # Build Docker image
 just info          # Show environment info
@@ -495,19 +444,12 @@ maxreview/
 
 Contributions are welcome! Please ensure:
 
-### For Python Code:
 - Code passes `mypy` type checking
 - Code passes `ruff` linting
 - Code is formatted with `black`
 - Tests pass with `pytest`
 - New features include tests
 - Follow Python best practices and PEP 8
-
-### For Bash Scripts:
-- Scripts pass `shellcheck` validation
-- Scripts pass `bash -n` syntax checking
-- Follow bash best practices
-- Include appropriate error handling
 
 ## License
 

@@ -168,12 +168,17 @@ def setup_run_directory(
     ),
 )
 @click.option(
+    "--repo",
+    type=str,
+    help="Repository in the format owner/repo (e.g., JetBrains/orca-ai)",
+)
+@click.option(
     "--resume",
     is_flag=True,
     help="Reuse artifacts from the previous run and skip AI execution",
 )
 @click.version_option()
-def main(pr: int | None, agent: str | None, resume: bool) -> None:
+def main(pr: int | None, agent: str | None, repo: str | None, resume: bool) -> None:
     """Interactive script to fetch open GitHub PRs with reviewers, create a git worktree,
     and run automated code review with multiple AI models (Claude, Codex, Gemini).
 
@@ -188,11 +193,13 @@ def main(pr: int | None, agent: str | None, resume: bool) -> None:
       MAXREVIEW_REPO   Optional owner/name override when auto-detect fails
 
     Examples:
-      maxreview                            # Interactive mode with all agents
-      maxreview --pr 123                   # Review PR #123 with all agents
-      maxreview --pr 123 --agent claude    # Review PR #123 with Claude only
-      maxreview --agent codex,gemini       # Interactive mode with Codex and Gemini
-      maxreview --resume --pr 123          # Reuse artifacts for PR #123 without rerunning agents
+      maxreview                                        # Interactive mode with all agents
+      maxreview --pr 123                               # Review PR #123 with all agents
+      maxreview --pr 123 --agent claude                # Review PR #123 with Claude only
+      maxreview --agent codex,gemini                   # Interactive mode with Codex and Gemini
+      maxreview --repo JetBrains/orca-ai               # Review PRs in specific repository
+      maxreview --pr 123 --repo JetBrains/orca-ai      # Review specific PR in specific repository
+      maxreview --resume --pr 123                      # Reuse artifacts for PR #123 without rerunning agents
     """
     try:
         require_docker = not resume
@@ -205,7 +212,7 @@ def main(pr: int | None, agent: str | None, resume: bool) -> None:
                 print_warning("--agent option is ignored when --resume is used")
                 agents_to_run = list(SUPPORTED_AGENTS)
 
-        github_client = GitHubClient()
+        github_client = GitHubClient(repo=repo)
         print_info(f"Repository: {github_client.repo}")
 
         if not os.environ.get("GITHUB_TOKEN"):

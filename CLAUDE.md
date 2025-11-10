@@ -1,3 +1,1 @@
-- use best practices of writing shell scripts
-- after finishing the task, make sure to run `shellcheck` and `bash -n` on the scripts and fix issues if any
 - always update README.md on changes to the code
