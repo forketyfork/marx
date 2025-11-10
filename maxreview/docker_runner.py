@@ -488,11 +488,11 @@ case "$MODEL_CMD" in
         ;;
     codex)
         setup_credentials "${CODEX_CONFIG_SRC:-}" "$HOME/.codex"
-        codex exec --yolo < "$PROMPT_FILE"
+        codex exec --dangerously-bypass-approvals-and-sandbox < "$PROMPT_FILE"
         ;;
     gemini)
         setup_credentials "${GEMINI_CONFIG_SRC:-}" "$HOME/.gemini"
-        gemini --output-format text --yolo < "$PROMPT_FILE"
+        gemini --output-format text --yolo --debug < "$PROMPT_FILE"
         ;;
     *)
         echo "Unknown model command: $MODEL_CMD" >&2

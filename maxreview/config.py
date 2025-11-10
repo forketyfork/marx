@@ -10,8 +10,8 @@ SUPPORTED_AGENTS: Final[set[str]] = {"claude", "codex", "gemini"}
 
 AGENT_COMMANDS: Final[dict[str, str]] = {
     "claude": "claude --print --output-format stream-json --verbose --dangerously-skip-permissions",
-    "codex": "codex exec --yolo",
-    "gemini": "gemini --output-format text --yolo",
+    "codex": "codex exec --dangerously-bypass-approvals-and-sandbox",
+    "gemini": "gemini --output-format text --yolo --debug",
 }
 
 AGENT_CONFIG_DIRS: Final[dict[str, str]] = {
