@@ -482,6 +482,7 @@ run_model_review() {
 
     local review_output_host="${output_file}"
     local review_output_container="${CONTAINER_RUNNER_DIR}/$(basename "$output_file")"
+    local workspace_review_container="/workspace/repo/.maxreview/${model_cmd}-review.json"
     local raw_output_file="${RUN_PATH}/${model_cmd}-raw.jsonl"
 
     rm -f "${review_output_host}" "${raw_output_file}"
@@ -544,7 +545,7 @@ Priority definitions:
 - P1: Important issues that should be fixed (logic bugs, performance problems, poor error handling)
 - P2: Nice-to-have improvements (code style, minor optimizations, suggestions)
 
-5. Write the JSON to '${review_output_container}'. The file must contain only the JSON object described above (no Markdown fences or extra commentary).
+5. Write the JSON to '${workspace_review_container}'. The file must contain only the JSON object described above (no Markdown fences or extra commentary).
 6. After writing the file, validate that it is well-formed JSON, then respond with a short confirmation message (no JSON in the message body)."
 
     print_info "Starting ${model_name} analysis..."
@@ -578,6 +579,7 @@ HOST_UID="${HOST_UID:-}"
 HOST_GID="${HOST_GID:-}"
 CONTAINER_RUNNER_DIR="${CONTAINER_RUNNER_DIR:-/runner}"
 MODEL_REVIEW_PATH="${MODEL_REVIEW_PATH:-${CONTAINER_RUNNER_DIR}/${MODEL_CMD}-review.json}"
+MODEL_REVIEW_WORKSPACE_PATH="${MODEL_REVIEW_WORKSPACE_PATH:-/workspace/repo/.maxreview/${MODEL_CMD}-review.json}"
 
 if [ -z "$HOST_UID" ] || [ "$HOST_UID" = "0" ]; then
     HOST_UID=1000
@@ -645,6 +647,10 @@ exec 2>>"$STDERR_FILE"
 : "${MODEL_REVIEW_PATH:=/workspace/${MODEL_CMD}-review.json}"
 mkdir -p "$(dirname "$MODEL_REVIEW_PATH")"
 rm -f "$MODEL_REVIEW_PATH"
+
+: "${MODEL_REVIEW_WORKSPACE_PATH:=/workspace/repo/.maxreview/${MODEL_CMD}-review.json}"
+mkdir -p "$(dirname "$MODEL_REVIEW_WORKSPACE_PATH")"
+rm -f "$MODEL_REVIEW_WORKSPACE_PATH"
 
 setup_credentials() {
     local source_dir="$1"
@@ -741,6 +747,12 @@ printf -v su_command "MODEL_CMD=%q PROMPT_FILE=%q STDERR_FILE=%q REPO_SLUG=%q PR
     "$MODEL_CMD" "$PROMPT_FILE" "$STDERR_FILE" "$REPO_SLUG" "$PR_NUMBER" "$COMMIT_SHA" "$HOME_OVERRIDE" "${MODEL_REVIEW_PATH}" "${CLAUDE_CONFIG_SRC:-}" "${CODEX_CONFIG_SRC:-}" "${GEMINI_CONFIG_SRC:-}"
 
 su "$TARGET_USER" -c "$su_command"
+
+if [ -f "$MODEL_REVIEW_WORKSPACE_PATH" ]; then
+    cp "$MODEL_REVIEW_WORKSPACE_PATH" "$MODEL_REVIEW_PATH"
+    chown "$HOST_UID:$HOST_GID" "$MODEL_REVIEW_PATH" 2>/dev/null || true
+    chmod 0644 "$MODEL_REVIEW_PATH" 2>/dev/null || true
+fi
 SCRIPT
     chmod +x "$runner_script"
 
@@ -772,6 +784,7 @@ SCRIPT
         -e "HOST_GID=${host_gid}"
         -e "CONTAINER_RUNNER_DIR=${CONTAINER_RUNNER_DIR}"
         -e "MODEL_REVIEW_PATH=${review_output_container}"
+        -e "MODEL_REVIEW_WORKSPACE_PATH=${workspace_review_container}"
         -w /workspace
     )
 
