@@ -7,7 +7,7 @@ from pathlib import Path
 
 import click
 
-from marx.config import SUPPORTED_AGENTS
+from marx.config import SUPPORTED_AGENTS, load_environment_from_file
 from marx.docker_runner import DockerRunner, ReviewPrompt
 from marx.exceptions import DependencyError, MarxError
 from marx.github import GitHubClient
@@ -202,6 +202,8 @@ def main(pr: int | None, agent: str | None, repo: str | None, resume: bool) -> N
       marx --resume --pr 123                      # Reuse artifacts without rerunning agents
     """
     try:
+        load_environment_from_file()
+
         require_docker = not resume
         check_dependencies(require_docker)
 
