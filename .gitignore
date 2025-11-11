@@ -59,6 +59,7 @@ dmypy.json
 result
 result-*
 .direnv/
+.nix-bin/
 
 # Environment
 .env

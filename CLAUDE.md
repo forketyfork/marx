@@ -27,11 +27,25 @@ just run --pr 123       # Review PR #123
 just docker-build       # Build Docker image
 ```
 
+### Installation
+
+For Nix users:
+```bash
+nix profile install .                 # Install globally
+nix run .                             # Run without installing
+nix develop                           # Enter development environment
+```
+
+For non-Nix users:
+```bash
+pip install .                         # Install globally
+pip install -e ".[dev]"               # Install in editable mode for development
+```
+
+**Note**: In Nix environments, `pip install` will fail because the Python environment is read-only.
+
 ### Manual Commands
 ```bash
-# Install package
-pip install -e ".[dev]"
-
 # Testing
 pytest -v                              # Run all tests
 pytest tests/test_github.py           # Run specific test file

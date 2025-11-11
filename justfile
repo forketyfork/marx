@@ -6,7 +6,19 @@ default:
 
 # Install package in editable mode with dev dependencies
 install:
-    pip install -e ".[dev]"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ -n "${IN_NIX_SHELL:-}" ]]; then
+        echo "❌ You are in a Nix environment. pip install will fail."
+        echo ""
+        echo "In Nix, the marx command is already available in the dev shell."
+        echo "For global installation, use: nix profile install ."
+        echo "To run without installing, use: nix run ."
+        exit 1
+    else
+        echo "📦 Installing marx in editable mode..."
+        pip install -e ".[dev]"
+    fi
 
 # Run all linters (black, ruff, mypy)
 lint: format-check lint-ruff type-check

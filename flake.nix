@@ -59,18 +59,27 @@
             echo ""
             echo "Python: $(python --version)"
             echo "Available commands:"
+            echo "  marx           - Run marx CLI (uses local source)"
             echo "  just lint      - Run linters (black, ruff, mypy)"
             echo "  just test      - Run tests with pytest"
             echo "  just run       - Run marx CLI"
-            echo "  just install   - Install package in editable mode"
             echo "  just check-sh  - Check bash scripts with shellcheck"
             echo ""
+            echo "Note: In this Nix environment, the marx command runs from your local source."
+            echo "      All changes to the code are immediately available."
+            echo ""
 
-            # Install package in editable mode if not already installed
-            if ! python -c "import marx" 2>/dev/null; then
-              echo "Installing marx in editable mode..."
-              pip install -e . --quiet
-            fi
+            # Add current directory to PYTHONPATH for development
+            export PYTHONPATH="$PWD:$PYTHONPATH"
+
+            # Create marx wrapper script in a temporary bin directory
+            mkdir -p .nix-bin
+            cat > .nix-bin/marx <<'EOF'
+#!/usr/bin/env bash
+exec python -m marx.cli "$@"
+EOF
+            chmod +x .nix-bin/marx
+            export PATH="$PWD/.nix-bin:$PATH"
           '';
 
           # Environment variables
