@@ -5,6 +5,7 @@ import re
 import subprocess
 from typing import Any
 
+from marx.config import get_config_value
 from marx.exceptions import GitHubAPIError
 
 
@@ -43,7 +44,7 @@ class GitHubClient:
         """Detect repository from environment or git remote."""
         import os
 
-        repo = os.environ.get("MARX_REPO")
+        repo = os.environ.get("MARX_REPO") or get_config_value("MARX_REPO")
         if repo:
             return repo
 
