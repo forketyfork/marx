@@ -199,7 +199,7 @@ def main(pr: int | None, agent: str | None, repo: str | None, resume: bool) -> N
       marx --agent codex,gemini                   # Interactive mode with Codex and Gemini
       marx --repo acmecorp/my-app               # Review PRs in specific repository
       marx --pr 123 --repo acmecorp/my-app      # Review specific PR in specific repository
-      marx --resume --pr 123                      # Reuse artifacts for PR #123 without rerunning agents
+      marx --resume --pr 123                      # Reuse artifacts without rerunning agents
     """
     try:
         require_docker = not resume
