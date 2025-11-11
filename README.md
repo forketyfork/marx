@@ -1,4 +1,4 @@
-# Marx
+# MARX - Multi-Agentic Review eXperience
 
 [![Build status](https://github.com/forketyfork/marx/actions/workflows/build.yml/badge.svg)](https://github.com/forketyfork/marx/actions/workflows/build.yml)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
