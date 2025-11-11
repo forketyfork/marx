@@ -179,6 +179,22 @@ Marx can use AI model configuration directories from your home directory:
 
 These directories are mounted read-only into the Docker container during execution. This method is useful for development when you've already authenticated via the respective CLI tools.
 
+### Global Config File (`~/.marx`)
+Marx also looks for a configuration file at `~/.marx`. Any values defined here act as defaults and are only applied when the corresponding environment variable is unset. The file uses a simple `KEY=value` format and supports comments starting with `#` on their own line.
+
+Example:
+
+```
+# Default repository for GitHub operations
+MARX_REPO=acmecorp/my-app
+
+# API keys (omit or override with environment variables as needed)
+GITHUB_TOKEN=ghp_example
+OPENAI_API_KEY="sk-123"
+```
+
+This file is loaded automatically when the CLI starts. Environment variables still take precedence, allowing you to override individual values for a single run.
+
 ## Usage
 
 ```bash

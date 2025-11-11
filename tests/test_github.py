@@ -2,7 +2,27 @@
 
 import pytest
 
+from marx import config as marx_config
 from marx.github import GitHubClient
+
+
+def test_detect_repository_from_config(monkeypatch, tmp_path) -> None:
+    """MARX_REPO from config file should be used when environment is unset."""
+
+    config_path = tmp_path / ".marx"
+    config_path.write_text("MARX_REPO=owner/repo\n", encoding="utf-8")
+
+    monkeypatch.delenv("MARX_REPO", raising=False)
+    monkeypatch.setattr(marx_config, "DEFAULT_CONFIG_PATH", config_path)
+    marx_config.clear_config_cache()
+
+    def fail_run(*_args, **_kwargs):  # pragma: no cover - defensive
+        raise AssertionError("gh CLI should not be invoked when config provides repo")
+
+    monkeypatch.setattr(GitHubClient, "_run_gh_command", fail_run)
+
+    client = GitHubClient()
+    assert client.repo == "owner/repo"
 
 
 def test_extract_repo_slug_ssh() -> None:

@@ -1,5 +1,9 @@
 """Configuration and constants for Marx."""
 
+from __future__ import annotations
+
+import os
+from pathlib import Path
 from typing import Final
 
 DOCKER_IMAGE: Final[str] = "marx:latest"
@@ -25,6 +29,84 @@ PRIORITY_ORDER: Final[dict[str, int]] = {
     "P1": 1,
     "P2": 2,
 }
+
+CONFIG_FILE_NAME: Final[str] = ".marx"
+DEFAULT_CONFIG_PATH: Final[Path] = Path.home() / CONFIG_FILE_NAME
+
+_CONFIG_CACHE: dict[Path, dict[str, str]] = {}
+
+
+def _parse_config_line(line: str) -> tuple[str, str] | None:
+    """Parse a single configuration line into a key/value pair."""
+
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+
+    if "=" not in stripped:
+        return None
+
+    key, value = stripped.split("=", 1)
+    key = key.strip()
+    value = value.strip()
+
+    if not key:
+        return None
+
+    if value and value[0] in {'"', "'"} and value[-1] == value[0]:
+        value = value[1:-1]
+    else:
+        hash_index = value.find(" #")
+        if hash_index != -1:
+            value = value[:hash_index].strip()
+
+    return key, value
+
+
+def load_config_file(path: Path | None = None) -> dict[str, str]:
+    """Load key/value configuration pairs from the Marx config file."""
+
+    resolved_path = path or DEFAULT_CONFIG_PATH
+    cached = _CONFIG_CACHE.get(resolved_path)
+    if cached is not None:
+        return dict(cached)
+
+    config: dict[str, str] = {}
+
+    try:
+        with resolved_path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                parsed = _parse_config_line(line)
+                if parsed is None:
+                    continue
+                key, value = parsed
+                config[key] = value
+    except FileNotFoundError:
+        pass
+
+    _CONFIG_CACHE[resolved_path] = config
+    return dict(config)
+
+
+def get_config_value(key: str, path: Path | None = None) -> str | None:
+    """Retrieve a configuration value by key."""
+
+    return load_config_file(path).get(key)
+
+
+def load_environment_from_file(path: Path | None = None) -> dict[str, str]:
+    """Populate ``os.environ`` with values from the Marx config file."""
+
+    config = load_config_file(path)
+    for key, value in config.items():
+        os.environ.setdefault(key, value)
+    return dict(config)
+
+
+def clear_config_cache() -> None:
+    """Clear the cached config values (useful for tests)."""
+
+    _CONFIG_CACHE.clear()
 
 
 class Colors:
