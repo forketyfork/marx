@@ -71,17 +71,49 @@ just check
 
 ## Installation
 
-1. Clone this repository
-2. Install dependencies:
-   ```bash
-   pip install -e .
-   # Or for development with testing tools:
-   pip install -e ".[dev]"
-   ```
-3. Run the tool:
-   ```bash
-   marx
-   ```
+### Option 1: Using Nix (Recommended)
+
+If you have [Nix](https://nixos.org/download.html) with flakes enabled:
+
+```bash
+# Clone the repository
+git clone https://github.com/forketyfork/marx.git
+cd marx
+
+# Install globally to your profile
+nix profile install .
+
+# Or run without installing
+nix run .
+
+# Or enter development environment
+nix develop
+```
+
+### Option 2: Using pip
+
+For standard Python environments:
+
+```bash
+# Clone the repository
+git clone https://github.com/forketyfork/marx.git
+cd marx
+
+# Install globally
+pip install .
+
+# Or install in editable mode for development
+pip install -e ".[dev]"
+```
+
+**Note**: If you're using Nix, `pip install` will fail because Nix's Python environment is read-only. Use the Nix installation methods above instead.
+
+### Running Marx
+
+After installation, run:
+```bash
+marx
+```
 
 ## Environment Variables
 
