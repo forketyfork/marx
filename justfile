@@ -1,4 +1,4 @@
-# MaxReview development commands
+# Marx development commands
 
 # Display available commands
 default:
@@ -14,28 +14,28 @@ lint: format-check lint-ruff type-check
 # Format code with black
 format:
     @echo "🎨 Formatting code with black..."
-    black maxreview tests
+    black marx tests
 
 # Check code formatting without modifying
 format-check:
     @echo "🔍 Checking code formatting..."
-    black --check maxreview tests
+    black --check marx tests
 
 # Lint with ruff
 lint-ruff:
     @echo "🔍 Linting with ruff..."
-    ruff check maxreview tests
+    ruff check marx tests
 
 # Fix auto-fixable ruff issues
 fix:
     @echo "🔧 Fixing auto-fixable issues..."
-    ruff check --fix maxreview tests
-    black maxreview tests
+    ruff check --fix marx tests
+    black marx tests
 
 # Type check with mypy
 type-check:
     @echo "🔍 Type checking with mypy..."
-    mypy maxreview
+    mypy marx
 
 # Run all tests with pytest
 test:
@@ -45,7 +45,7 @@ test:
 # Run tests with coverage report
 test-cov:
     @echo "🧪 Running tests with coverage..."
-    pytest --cov=maxreview --cov-report=term-missing --cov-report=html
+    pytest --cov=marx --cov-report=term-missing --cov-report=html
 
 # Run specific test file
 test-file FILE:
@@ -60,24 +60,24 @@ test-match PATTERN:
 # Check bash scripts with shellcheck
 check-sh:
     @echo "🔍 Checking bash scripts..."
-    shellcheck maxreview.sh
-    bash -n maxreview.sh
+    shellcheck marx.sh
+    bash -n marx.sh
     @echo "✅ Bash scripts are valid"
 
-# Run maxreview CLI (pass arguments after --)
+# Run marx CLI (pass arguments after --)
 run *ARGS:
-    @echo "🚀 Running maxreview..."
-    python -m maxreview.cli {{ARGS}}
+    @echo "🚀 Running marx..."
+    python -m marx.cli {{ARGS}}
 
-# Run maxreview with a specific PR
+# Run marx with a specific PR
 run-pr PR:
     @echo "🚀 Reviewing PR #{{PR}}..."
-    python -m maxreview.cli --pr {{PR}}
+    python -m marx.cli --pr {{PR}}
 
-# Run maxreview interactively
+# Run marx interactively
 run-interactive:
-    @echo "🚀 Running maxreview interactively..."
-    python -m maxreview.cli
+    @echo "🚀 Running marx interactively..."
+    python -m marx.cli
 
 # Clean build artifacts and cache
 clean:
@@ -97,12 +97,12 @@ clean:
 # Build Docker image
 docker-build:
     @echo "🐳 Building Docker image..."
-    docker build -t maxreview:latest .
+    docker build -t marx:latest .
 
 # Run Docker image verification
 docker-verify:
     @echo "🐳 Verifying Docker image..."
-    docker run --rm maxreview:latest /bin/bash -c "which claude && which codex && which gemini && echo 'All CLI tools found!'"
+    docker run --rm marx:latest /bin/bash -c "which claude && which codex && which gemini && echo 'All CLI tools found!'"
 
 # Run all checks (lint, type-check, test)
 check: lint type-check test check-sh
@@ -124,7 +124,7 @@ build:
 
 # Show project info
 info:
-    @echo "MaxReview Development Environment"
+    @echo "Marx Development Environment"
     @echo "================================="
     @echo "Python: $(python --version)"
     @echo "Pip: $(pip --version)"
@@ -137,4 +137,4 @@ info:
     @echo "  docker: $(docker --version)"
     @echo ""
     @echo "Python Package Status:"
-    @python -c "import maxreview; print(f'  maxreview: {maxreview.__version__}')" 2>/dev/null || echo "  maxreview: not installed"
+    @python -c "import marx; print(f'  marx: {marx.__version__}')" 2>/dev/null || echo "  marx: not installed"

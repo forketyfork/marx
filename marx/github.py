@@ -5,7 +5,7 @@ import re
 import subprocess
 from typing import Any
 
-from maxreview.exceptions import GitHubAPIError
+from marx.exceptions import GitHubAPIError
 
 
 class GitHubClient:
@@ -43,7 +43,7 @@ class GitHubClient:
         """Detect repository from environment or git remote."""
         import os
 
-        repo = os.environ.get("MAXREVIEW_REPO")
+        repo = os.environ.get("MARX_REPO")
         if repo:
             return repo
 
@@ -73,7 +73,7 @@ class GitHubClient:
             pass
 
         raise GitHubAPIError(
-            "Unable to determine repository. Set MAXREVIEW_REPO environment variable."
+            "Unable to determine repository. Set MARX_REPO environment variable."
         )
 
     @staticmethod

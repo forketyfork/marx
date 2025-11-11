@@ -2,7 +2,7 @@
 
 import pytest
 
-from maxreview.github import GitHubClient
+from marx.github import GitHubClient
 
 
 def test_extract_repo_slug_ssh() -> None:

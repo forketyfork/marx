@@ -1,1 +1,1 @@
-"""Tests for MaxReview."""
+"""Tests for Marx."""

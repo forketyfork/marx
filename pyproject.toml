@@ -3,13 +3,13 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "maxreview"
+name = "marx"
 version = "1.0.0"
 description = "Automated multi-agent code review tool for GitHub PRs"
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [
-    {name = "MaxReview Contributors"}
+    {name = "Marx Contributors"}
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -36,10 +36,10 @@ dev = [
 ]
 
 [project.scripts]
-maxreview = "maxreview.cli:main"
+marx = "marx.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["maxreview*"]
+include = ["marx*"]
 
 [tool.black]
 line-length = 100
@@ -61,4 +61,4 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --cov=maxreview --cov-report=term-missing"
+addopts = "-v --cov=marx --cov-report=term-missing"

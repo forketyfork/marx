@@ -1,5 +1,5 @@
 {
-  description = "MaxReview - Automated multi-agent code review tool for GitHub PRs";
+  description = "Marx - Automated multi-agent code review tool for GitHub PRs";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -55,20 +55,20 @@
           ];
 
           shellHook = ''
-            echo "🚀 MaxReview development environment loaded!"
+            echo "🚀 Marx development environment loaded!"
             echo ""
             echo "Python: $(python --version)"
             echo "Available commands:"
             echo "  just lint      - Run linters (black, ruff, mypy)"
             echo "  just test      - Run tests with pytest"
-            echo "  just run       - Run maxreview CLI"
+            echo "  just run       - Run marx CLI"
             echo "  just install   - Install package in editable mode"
             echo "  just check-sh  - Check bash scripts with shellcheck"
             echo ""
 
             # Install package in editable mode if not already installed
-            if ! python -c "import maxreview" 2>/dev/null; then
-              echo "Installing maxreview in editable mode..."
+            if ! python -c "import marx" 2>/dev/null; then
+              echo "Installing marx in editable mode..."
               pip install -e . --quiet
             fi
           '';
@@ -77,9 +77,9 @@
           PYTHONPATH = "${pythonEnv}/${pythonEnv.sitePackages}";
         };
 
-        # Package definition for maxreview
+        # Package definition for marx
         packages.default = pkgs.python312Packages.buildPythonApplication {
-          pname = "maxreview";
+          pname = "marx";
           version = "1.0.0";
 
           src = ./.;
@@ -105,7 +105,7 @@
 
           meta = with pkgs.lib; {
             description = "Automated multi-agent code review tool for GitHub PRs";
-            homepage = "https://github.com/forketyfork/maxreview";
+            homepage = "https://github.com/forketyfork/marx";
             license = licenses.mit;
             maintainers = [ ];
           };
@@ -114,7 +114,7 @@
         # Make the app directly runnable
         apps.default = {
           type = "app";
-          program = "${self.packages.${system}.default}/bin/maxreview";
+          program = "${self.packages.${system}.default}/bin/marx";
         };
       }
     );

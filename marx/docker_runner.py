@@ -11,14 +11,14 @@ import docker  # type: ignore[import-untyped]
 from docker.errors import BuildError, ContainerError, ImageNotFound  # type: ignore[import-untyped]
 from pydantic import BaseModel
 
-from maxreview.config import (
+from marx.config import (
     AGENT_CONFIG_DIRS,
     CONTAINER_RUNNER_DIR,
     CONTAINER_WORKSPACE_DIR,
     DOCKER_IMAGE,
 )
-from maxreview.exceptions import DockerError
-from maxreview.ui import print_error, print_info, print_success, print_warning
+from marx.exceptions import DockerError
+from marx.ui import print_error, print_info, print_success, print_warning
 
 
 class ReviewPrompt(BaseModel):
@@ -219,7 +219,7 @@ class DockerRunner:
             "CONTAINER_RUNNER_DIR": CONTAINER_RUNNER_DIR,
             "MODEL_REVIEW_PATH": f"{CONTAINER_RUNNER_DIR}/{agent}-review.json",
             "MODEL_REVIEW_WORKSPACE_PATH": (
-                f"{CONTAINER_WORKSPACE_DIR}/repo/.maxreview/{agent}-review.json"
+                f"{CONTAINER_WORKSPACE_DIR}/repo/.marx/{agent}-review.json"
             ),
         }
 
@@ -231,7 +231,7 @@ class DockerRunner:
                 volumes[str(host_config_path)] = {"bind": container_config_path, "mode": "ro"}
                 environment[f"{agent.upper()}_CONFIG_SRC"] = container_config_path
 
-        container_name = f"maxreview-{agent}-{prompt_config.pr_number}"
+        container_name = f"marx-{agent}-{prompt_config.pr_number}"
 
         try:
             container = self.client.containers.run(
@@ -340,7 +340,7 @@ Priority definitions:
 - P1: Important issues that should be fixed (logic bugs, performance problems, poor error handling)
 - P2: Nice-to-have improvements (code style, minor optimizations, suggestions)
 
-5. Write the JSON to '{CONTAINER_WORKSPACE_DIR}/repo/.maxreview/{agent}-review.json'.
+5. Write the JSON to '{CONTAINER_WORKSPACE_DIR}/repo/.marx/{agent}-review.json'.
    The file must contain only the JSON object described above
    (no Markdown fences or extra commentary).
 6. After writing the file, validate that it is well-formed JSON,
@@ -363,15 +363,15 @@ HOST_GID="${HOST_GID:-1000}"
 CONTAINER_RUNNER_DIR="${CONTAINER_RUNNER_DIR:-/runner}"
 MODEL_REVIEW_PATH="${MODEL_REVIEW_PATH:-${CONTAINER_RUNNER_DIR}/${MODEL_CMD}-review.json}"
 MODEL_REVIEW_WORKSPACE_PATH="${MODEL_REVIEW_WORKSPACE_PATH:-\\
-/workspace/repo/.maxreview/${MODEL_CMD}-review.json}"
+/workspace/repo/.marx/${MODEL_CMD}-review.json}"
 
-TARGET_USER="maxreview"
+TARGET_USER="marx"
 if getent passwd "$HOST_UID" >/dev/null 2>&1; then
     TARGET_USER="$(getent passwd "$HOST_UID" | cut -d: -f1)"
 fi
 
 if ! getent group "$HOST_GID" >/dev/null 2>&1; then
-    groupadd -g "$HOST_GID" maxreview 2>/dev/null || true
+    groupadd -g "$HOST_GID" marx 2>/dev/null || true
 fi
 
 if ! id -u "$TARGET_USER" >/dev/null 2>&1; then
@@ -412,7 +412,7 @@ exec 2>>"$STDERR_FILE"
 mkdir -p "$(dirname "$MODEL_REVIEW_PATH")"
 rm -f "$MODEL_REVIEW_PATH"
 
-: "${MODEL_REVIEW_WORKSPACE_PATH:=/workspace/repo/.maxreview/${MODEL_CMD}-review.json}"
+: "${MODEL_REVIEW_WORKSPACE_PATH:=/workspace/repo/.marx/${MODEL_CMD}-review.json}"
 mkdir -p "$(dirname "$MODEL_REVIEW_WORKSPACE_PATH")"
 rm -f "$MODEL_REVIEW_WORKSPACE_PATH"
 

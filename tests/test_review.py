@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from maxreview.review import (
+from marx.review import (
     Issue,
     count_issues_by_priority,
     filter_issues_for_inline_comments,

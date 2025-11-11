@@ -1,8 +1,8 @@
-"""Configuration and constants for MaxReview."""
+"""Configuration and constants for Marx."""
 
 from typing import Final
 
-DOCKER_IMAGE: Final[str] = "maxreview:latest"
+DOCKER_IMAGE: Final[str] = "marx:latest"
 CONTAINER_RUNNER_DIR: Final[str] = "/runner"
 CONTAINER_WORKSPACE_DIR: Final[str] = "/workspace"
 

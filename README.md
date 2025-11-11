@@ -1,6 +1,6 @@
-# MaxReview
+# Marx
 
-An interactive CLI tool for automated multi-model AI code review of GitHub Pull Requests. MaxReview fetches open PRs, creates a git worktree, and runs parallel code reviews using three AI models (Claude, Codex, and Gemini).
+An interactive CLI tool for automated multi-model AI code review of GitHub Pull Requests. Marx fetches open PRs, creates a git worktree, and runs parallel code reviews using three AI models (Claude, Codex, and Gemini).
 
 ## Features
 
@@ -27,8 +27,8 @@ If you have [Nix](https://nixos.org/download.html) with flakes enabled:
 
 ```bash
 # Clone the repository
-git clone https://github.com/forketyfork/maxreview.git
-cd maxreview
+git clone https://github.com/forketyfork/marx.git
+cd marx
 
 # Enter the development environment
 nix develop
@@ -55,7 +55,7 @@ just lint
 # Run tests
 just test
 
-# Run maxreview
+# Run marx
 just run
 
 # Install package in editable mode
@@ -76,7 +76,7 @@ just check
    ```
 3. Run the tool:
    ```bash
-   maxreview
+   marx
    ```
 
 ## Environment Variables
@@ -105,11 +105,11 @@ The following API keys enable the respective AI models to function. You can prov
 Without API keys, the AI models will fall back to using local configuration from `~/.claude`, `~/.codex`, or `~/.gemini` directories if available.
 
 ### Optional
-- `MAXREVIEW_REPO` - Optional owner/name override (e.g., `owner/repo`) when auto-detection fails
+- `MARX_REPO` - Optional owner/name override (e.g., `owner/repo`) when auto-detection fails
 
 ## Configuration
 
-MaxReview supports two authentication methods for AI models:
+Marx supports two authentication methods for AI models:
 
 ### Method 1: API Keys (Recommended for CI/CD)
 Set environment variables with your API keys:
@@ -120,7 +120,7 @@ export GOOGLE_API_KEY="your-key-here"
 ```
 
 ### Method 2: Local Configuration Directories
-MaxReview can use AI model configuration directories from your home directory:
+Marx can use AI model configuration directories from your home directory:
 
 - `~/.claude` - Claude CLI configuration
 - `~/.codex` - Codex CLI configuration
@@ -131,7 +131,7 @@ These directories are mounted read-only into the Docker container during executi
 ## Usage
 
 ```bash
-maxreview [OPTIONS]
+marx [OPTIONS]
 ```
 
 ### Options
@@ -141,7 +141,7 @@ maxreview [OPTIONS]
 - `--pr <number>` - Specify PR number directly (skip interactive selection)
 - `--agent <agents>` - Comma-separated list of agents to run (claude,codex,gemini)
   - Default: all agents
-- `--repo <owner/repo>` - Repository in the format owner/repo (e.g., JetBrains/orca-ai)
+- `--repo <owner/repo>` - Repository in the format owner/repo (e.g., acmecorp/my-app)
   - Overrides automatic repository detection
 - `--resume` - Reuse artifacts from the previous run and skip AI execution
 
@@ -149,41 +149,41 @@ maxreview [OPTIONS]
 
 ```bash
 # Interactive mode with all agents (default)
-maxreview
+marx
 
 # Review PR #123 with all agents
-maxreview --pr 123
+marx --pr 123
 
 # Review PR #123 with Claude only
-maxreview --pr 123 --agent claude
+marx --pr 123 --agent claude
 
 # Interactive mode with Codex and Gemini
-maxreview --agent codex,gemini
+marx --agent codex,gemini
 
 # Review PRs in specific repository
-maxreview --repo JetBrains/orca-ai
+marx --repo acmecorp/my-app
 
 # Review specific PR in specific repository
-maxreview --pr 123 --repo JetBrains/orca-ai
+marx --pr 123 --repo acmecorp/my-app
 
 # Review specific PR with multiple selected agents
-maxreview --pr 456 --agent claude,gemini
+marx --pr 456 --agent claude,gemini
 
 # Resume from previous run without rerunning agents
-maxreview --resume --pr 123
+marx --resume --pr 123
 ```
 
 ## How It Works
 
 ### 1. Setup & Validation
 - Checks for required dependencies (git, gh, jq, docker)
-- Builds Docker image `maxreview:latest` if not present
+- Builds Docker image `marx:latest` if not present
 - Validates `GITHUB_TOKEN` environment variable
 - Confirms current directory is a git repository
 
 ### 2. Repository Detection
 Determines repository slug (owner/name) using three methods in order:
-1. `MAXREVIEW_REPO` environment variable
+1. `MARX_REPO` environment variable
 2. `gh repo view` command
 3. Git remote URL parsing (fallback)
 
@@ -274,8 +274,8 @@ All files are saved in the worktree directory:
 ## Example Workflow
 
 ```bash
-# Run maxreview
-maxreview
+# Run marx
+marx
 
 # The tool will:
 # 1. Detect your repository
@@ -294,7 +294,7 @@ git worktree remove ../pr-123-feature-branch
 
 ## Docker Image
 
-MaxReview uses a Docker image containing:
+Marx uses a Docker image containing:
 - **AI CLI Tools**: Claude, Codex, Gemini
 - **GitHub Tools**: `gh` (GitHub CLI)
 - **Search & Navigation**: `rg` (ripgrep), `fd`, `tree`
@@ -305,7 +305,7 @@ The image is built automatically on first run using the Dockerfile in this repos
 
 ## Error Handling
 
-MaxReview includes robust error handling:
+Marx includes robust error handling:
 - Non-JSON outputs from AI models are handled gracefully with empty reviews
 - Failed API calls are caught and reported with detailed error messages
 - Docker errors and container stderr are both captured and displayed
@@ -327,13 +327,13 @@ MaxReview includes robust error handling:
 Set your GitHub token: `export GITHUB_TOKEN=ghp_your_token_here`
 
 ### "Unable to determine repository automatically"
-Set the repository manually: `export MAXREVIEW_REPO=owner/repo`
+Set the repository manually: `export MARX_REPO=owner/repo`
 
 ### "Missing required dependencies"
 Install the missing tools listed in the error message.
 
 ### AI model fails or returns non-JSON output
-MaxReview will automatically handle this by creating an empty review. Error details are displayed in the terminal output, including:
+Marx will automatically handle this by creating an empty review. Error details are displayed in the terminal output, including:
 - Docker errors (if Docker command failed)
 - Container stderr output (errors from the AI CLI tool)
 - Helpful hints for common issues (missing/invalid credentials)
@@ -365,7 +365,7 @@ just             # List all commands
 just check       # Run all checks (lint + type-check + test)
 just lint        # Run linters
 just test        # Run tests
-just run --pr 123  # Run maxreview
+just run --pr 123  # Run marx
 ```
 
 #### Setting up direnv
@@ -409,20 +409,20 @@ pytest -v
 pytest tests/test_github.py
 
 # Type checking with mypy
-mypy maxreview
+mypy marx
 
 # Code formatting with black
-black maxreview tests
+black marx tests
 
 # Linting with ruff
-ruff check maxreview tests
+ruff check marx tests
 ```
 
 ### Project Structure
 
 ```
-maxreview/
-├── maxreview/          # Main package
+marx/
+├── marx/          # Main package
 │   ├── __init__.py
 │   ├── cli.py          # CLI entry point and orchestration
 │   ├── config.py       # Configuration and constants

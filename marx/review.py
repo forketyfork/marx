@@ -6,10 +6,10 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from maxreview.config import PRIORITY_ORDER
-from maxreview.exceptions import ReviewError
-from maxreview.github import GitHubClient
-from maxreview.ui import confirm, print_error, print_info, print_success, print_warning
+from marx.config import PRIORITY_ORDER
+from marx.exceptions import ReviewError
+from marx.github import GitHubClient
+from marx.ui import confirm, print_error, print_info, print_success, print_warning
 
 
 class Issue(BaseModel):

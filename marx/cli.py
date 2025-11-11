@@ -1,4 +1,4 @@
-"""Command-line interface for MaxReview."""
+"""Command-line interface for Marx."""
 
 import os
 import shutil
@@ -7,17 +7,17 @@ from pathlib import Path
 
 import click
 
-from maxreview.config import SUPPORTED_AGENTS
-from maxreview.docker_runner import DockerRunner, ReviewPrompt
-from maxreview.exceptions import DependencyError, MaxReviewError
-from maxreview.github import GitHubClient
-from maxreview.review import (
+from marx.config import SUPPORTED_AGENTS
+from marx.docker_runner import DockerRunner, ReviewPrompt
+from marx.exceptions import DependencyError, MarxError
+from marx.github import GitHubClient
+from marx.review import (
     count_issues_by_priority,
     merge_reviews,
     post_github_review,
     save_merged_review,
 )
-from maxreview.ui import (
+from marx.ui import (
     confirm,
     console,
     display_issue,
@@ -130,7 +130,7 @@ def setup_run_directory(
 
     if resume_mode:
         if not run_dir.exists():
-            raise MaxReviewError(
+            raise MarxError(
                 f"Resume mode requested but no artifacts found at {run_dir}\n"
                 "Run the agents at least once before using --resume."
             )
@@ -170,7 +170,7 @@ def setup_run_directory(
 @click.option(
     "--repo",
     type=str,
-    help="Repository in the format owner/repo (e.g., JetBrains/orca-ai)",
+    help="Repository in the format owner/repo (e.g., acmecorp/my-app)",
 )
 @click.option(
     "--resume",
@@ -190,16 +190,16 @@ def main(pr: int | None, agent: str | None, repo: str | None, resume: bool) -> N
 
     Environment Variables:
       GITHUB_TOKEN     GitHub API token (required for container access)
-      MAXREVIEW_REPO   Optional owner/name override when auto-detect fails
+      MARX_REPO   Optional owner/name override when auto-detect fails
 
     Examples:
-      maxreview                                        # Interactive mode with all agents
-      maxreview --pr 123                               # Review PR #123 with all agents
-      maxreview --pr 123 --agent claude                # Review PR #123 with Claude only
-      maxreview --agent codex,gemini                   # Interactive mode with Codex and Gemini
-      maxreview --repo JetBrains/orca-ai               # Review PRs in specific repository
-      maxreview --pr 123 --repo JetBrains/orca-ai      # Review specific PR in specific repository
-      maxreview --resume --pr 123                      # Reuse artifacts for PR #123 without rerunning agents
+      marx                                        # Interactive mode with all agents
+      marx --pr 123                               # Review PR #123 with all agents
+      marx --pr 123 --agent claude                # Review PR #123 with Claude only
+      marx --agent codex,gemini                   # Interactive mode with Codex and Gemini
+      marx --repo acmecorp/my-app               # Review PRs in specific repository
+      marx --pr 123 --repo acmecorp/my-app      # Review specific PR in specific repository
+      marx --resume --pr 123                      # Reuse artifacts for PR #123 without rerunning agents
     """
     try:
         require_docker = not resume
@@ -358,7 +358,7 @@ def main(pr: int | None, agent: str | None, repo: str | None, resume: bool) -> N
         print_info("Need a local checkout? Run:")
         console.print(f"[cyan]  gh pr checkout {pr_number}[/cyan]")
 
-    except MaxReviewError as e:
+    except MarxError as e:
         print_error(str(e))
         sys.exit(1)
     except KeyboardInterrupt:
