@@ -72,9 +72,7 @@ class GitHubClient:
         except Exception:
             pass
 
-        raise GitHubAPIError(
-            "Unable to determine repository. Set MARX_REPO environment variable."
-        )
+        raise GitHubAPIError("Unable to determine repository. Set MARX_REPO environment variable.")
 
     @staticmethod
     def _extract_repo_slug(url: str) -> str | None:
