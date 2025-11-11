@@ -510,9 +510,10 @@ marx/
 ## Publishing
 
 Marx ships with an automated publication pipeline defined in [`.github/workflows/publish.yml`](.github/workflows/publish.yml).
-The workflow builds source and wheel distributions and uploads them as a workflow artifact on every run. When a
-GitHub release is published, the same workflow also pushes the distributions to PyPI using the `PYPI_API_TOKEN`
-repository secret.
+The workflow builds source and wheel distributions and uploads them as a workflow artifact on every run. Because uploading
+artifacts requires elevated GitHub token capabilities, the workflow explicitly grants the `actions: write` permission at the
+workflow level. When a GitHub release is published, the same workflow also pushes the distributions to PyPI using the
+`PYPI_API_TOKEN` repository secret.
 
 ### Preparing a release
 
