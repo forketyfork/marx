@@ -45,6 +45,7 @@ pip install -e ".[dev]"               # Install in editable mode for development
 **Note**: In Nix environments, `pip install` will fail because the Python environment is read-only.
 
 ### Manual Commands
+Always reformat the codebase with `black` before completing any task.
 ```bash
 # Testing
 pytest -v                              # Run all tests

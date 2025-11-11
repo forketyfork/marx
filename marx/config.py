@@ -110,9 +110,7 @@ def load_review_prompt_template(config_path: Path | None = None) -> str:
         try:
             return resolved_path.read_text(encoding="utf-8")
         except FileNotFoundError as exc:
-            raise FileNotFoundError(
-                f"Review prompt override not found at {resolved_path}"
-            ) from exc
+            raise FileNotFoundError(f"Review prompt override not found at {resolved_path}") from exc
 
     prompt_resource = resources.files(DEFAULT_PROMPT_RESOURCE_PACKAGE).joinpath(
         DEFAULT_PROMPT_RESOURCE_NAME
