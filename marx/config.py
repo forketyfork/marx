@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from importlib import resources
 from pathlib import Path
 from typing import Final
 
@@ -32,6 +33,9 @@ PRIORITY_ORDER: Final[dict[str, int]] = {
 
 CONFIG_FILE_NAME: Final[str] = ".marx"
 DEFAULT_CONFIG_PATH: Final[Path] = Path.home() / CONFIG_FILE_NAME
+REVIEW_PROMPT_CONFIG_KEY: Final[str] = "REVIEW_PROMPT_PATH"
+DEFAULT_PROMPT_RESOURCE_PACKAGE: Final[str] = "marx.prompts"
+DEFAULT_PROMPT_RESOURCE_NAME: Final[str] = "review_prompt.md"
 
 _CONFIG_CACHE: dict[Path, dict[str, str]] = {}
 
@@ -92,6 +96,26 @@ def get_config_value(key: str, path: Path | None = None) -> str | None:
     """Retrieve a configuration value by key."""
 
     return load_config_file(path).get(key)
+
+
+def load_review_prompt_template(config_path: Path | None = None) -> str:
+    """Load the review prompt template, honoring configuration overrides."""
+
+    override = os.environ.get("MARX_REVIEW_PROMPT_PATH")
+    if not override:
+        override = get_config_value(REVIEW_PROMPT_CONFIG_KEY, config_path)
+
+    if override:
+        resolved_path = Path(override).expanduser()
+        try:
+            return resolved_path.read_text(encoding="utf-8")
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(f"Review prompt override not found at {resolved_path}") from exc
+
+    prompt_resource = resources.files(DEFAULT_PROMPT_RESOURCE_PACKAGE).joinpath(
+        DEFAULT_PROMPT_RESOURCE_NAME
+    )
+    return prompt_resource.read_text(encoding="utf-8")
 
 
 def load_environment_from_file(path: Path | None = None) -> dict[str, str]:

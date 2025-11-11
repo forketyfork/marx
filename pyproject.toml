@@ -41,6 +41,9 @@ marx = "marx.cli:main"
 [tool.setuptools.packages.find]
 include = ["marx*"]
 
+[tool.setuptools.package-data]
+"marx.prompts" = ["review_prompt.md"]
+
 [tool.black]
 line-length = 100
 target-version = ['py312']

@@ -195,6 +195,14 @@ OPENAI_API_KEY="sk-123"
 
 This file is loaded automatically when the CLI starts. Environment variables still take precedence, allowing you to override individual values for a single run.
 
+### Customizing the review prompt
+
+The default review instructions provided to each agent are stored in the package at
+`marx/prompts/review_prompt.md`. You can supply your own prompt template by either setting the
+`MARX_REVIEW_PROMPT_PATH` environment variable or adding `REVIEW_PROMPT_PATH=/path/to/prompt.md`
+to your `~/.marx` configuration file. The template supports the placeholders `{pr_number}`, `{repo}`,
+`{commit_sha}`, `{agent}`, and `{container_workspace_dir}`, which are replaced at runtime.
+
 ## Usage
 
 ```bash
