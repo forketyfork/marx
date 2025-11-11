@@ -1,0 +1,51 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+
+    - name: Check formatting with black
+      run: black --check marx tests
+
+    - name: Lint with ruff
+      run: ruff check marx tests
+
+    - name: Type check with mypy
+      run: mypy marx
+
+    - name: Run tests with pytest
+      run: pytest -v
+
+    - name: Verify shellcheck availability and check bash scripts
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y shellcheck
+        shellcheck --version
+        if [ -f marx.sh ]; then
+          shellcheck marx.sh
+          bash -n marx.sh
+        else
+          echo "No bash scripts to check"
+        fi

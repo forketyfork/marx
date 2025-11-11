@@ -1,5 +1,9 @@
 # Marx
 
+[![Build status](https://github.com/forketyfork/marx/actions/workflows/build.yml/badge.svg)](https://github.com/forketyfork/marx/actions/workflows/build.yml)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/language-Python-blue.svg)](https://www.python.org/)
+
 An interactive CLI tool for automated multi-model AI code review of GitHub Pull Requests. Marx fetches open PRs, creates a git worktree, and runs parallel code reviews using three AI models (Claude, Codex, and Gemini).
 
 ## Features
