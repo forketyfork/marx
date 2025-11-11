@@ -48,3 +48,29 @@ def test_load_environment_does_not_override_existing(monkeypatch, tmp_path) -> N
     marx_config.load_environment_from_file(config_path)
 
     assert os.environ["GITHUB_TOKEN"] == "from-env"
+
+
+def test_load_review_prompt_template_uses_packaged_default(monkeypatch) -> None:
+    """The bundled review prompt should be used when no overrides are provided."""
+
+    monkeypatch.delenv("MARX_REVIEW_PROMPT_PATH", raising=False)
+    marx_config.clear_config_cache()
+    prompt = marx_config.load_review_prompt_template()
+
+    assert "comprehensive code review" in prompt
+    assert "{agent}" in prompt  # placeholders remain for formatting
+
+
+def test_load_review_prompt_template_honors_override(monkeypatch, tmp_path) -> None:
+    """A file path provided via environment variable should override the default."""
+
+    custom_prompt = "Review PR #{pr_number} in {repo} for agent {agent}."
+    override_path = tmp_path / "prompt.md"
+    override_path.write_text(custom_prompt, encoding="utf-8")
+
+    monkeypatch.setenv("MARX_REVIEW_PROMPT_PATH", str(override_path))
+    marx_config.clear_config_cache()
+
+    prompt = marx_config.load_review_prompt_template()
+
+    assert prompt == custom_prompt
