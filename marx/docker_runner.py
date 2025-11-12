@@ -22,6 +22,12 @@ from marx.config import (
 from marx.exceptions import DockerError
 from marx.ui import print_error, print_info, print_success, print_warning
 
+MODEL_OVERRIDE_ENV_VARS: dict[str, str] = {
+    "claude": "CLAUDE_MODEL_OVERRIDE",
+    "codex": "CODEX_MODEL_OVERRIDE",
+    "gemini": "GEMINI_MODEL_OVERRIDE",
+}
+
 
 class ReviewPrompt(BaseModel):
     """Model for review prompt configuration."""
@@ -86,10 +92,12 @@ class DockerRunner:
         agents: list[str],
         prompt_config: ReviewPrompt,
         run_path: Path,
+        model_overrides: dict[str, str] | None = None,
     ) -> dict[str, Path]:
         """Run multiple agents in parallel and return their output file paths."""
         results: dict[str, Path] = {}
         errors: dict[str, Exception] = {}
+        resolved_overrides = model_overrides or {}
 
         with ThreadPoolExecutor(max_workers=len(agents)) as executor:
             future_to_agent = {
@@ -98,6 +106,7 @@ class DockerRunner:
                     agent,
                     prompt_config,
                     run_path,
+                    resolved_overrides.get(agent),
                 ): agent
                 for agent in agents
             }
@@ -126,6 +135,7 @@ class DockerRunner:
         agent: str,
         prompt_config: ReviewPrompt,
         run_path: Path,
+        model_override: str | None = None,
     ) -> Path:
         """Run a single agent in a Docker container."""
         print_info(f"Starting {agent.capitalize()} analysis...")
@@ -162,6 +172,7 @@ class DockerRunner:
                 prompt_path,
                 runner_script_path,
                 stderr_file,
+                model_override,
             )
 
             raw_output_file.write_text(container_output)
@@ -212,6 +223,7 @@ class DockerRunner:
         prompt_path: Path,
         runner_script_path: Path,
         stderr_file: Path,
+        model_override: str | None = None,
     ) -> str:
         """Run a Docker container and return its output."""
         host_uid = os.getuid()
@@ -240,6 +252,11 @@ class DockerRunner:
                 f"{CONTAINER_WORKSPACE_DIR}/repo/.marx/{agent}-review.json"
             ),
         }
+
+        if model_override:
+            env_var = MODEL_OVERRIDE_ENV_VARS.get(agent)
+            if env_var:
+                environment[env_var] = model_override
 
         config_dir = AGENT_CONFIG_DIRS.get(agent)
         if config_dir:
@@ -431,16 +448,29 @@ cd /workspace/repo
 case "$MODEL_CMD" in
     claude)
         setup_credentials "${CLAUDE_CONFIG_SRC:-}" "$HOME/.claude"
-        claude --print --output-format stream-json --verbose \\
+        CLAUDE_MODEL_FLAGS=()
+        if [[ -n "${CLAUDE_MODEL_OVERRIDE:-}" ]]; then
+            CLAUDE_MODEL_FLAGS=(--model "${CLAUDE_MODEL_OVERRIDE}")
+        fi
+        claude "${CLAUDE_MODEL_FLAGS[@]}" --print --output-format stream-json --verbose \\
             --dangerously-skip-permissions < "$PROMPT_FILE"
         ;;
     codex)
         setup_credentials "${CODEX_CONFIG_SRC:-}" "$HOME/.codex"
-        codex exec --dangerously-bypass-approvals-and-sandbox < "$PROMPT_FILE"
+        CODEX_MODEL_FLAGS=()
+        if [[ -n "${CODEX_MODEL_OVERRIDE:-}" ]]; then
+            CODEX_MODEL_FLAGS=(--model "${CODEX_MODEL_OVERRIDE}")
+        fi
+        codex exec "${CODEX_MODEL_FLAGS[@]}" --dangerously-bypass-approvals-and-sandbox \\
+            < "$PROMPT_FILE"
         ;;
     gemini)
         setup_credentials "${GEMINI_CONFIG_SRC:-}" "$HOME/.gemini"
-        gemini --output-format text --yolo --debug < "$PROMPT_FILE"
+        GEMINI_MODEL_FLAGS=()
+        if [[ -n "${GEMINI_MODEL_OVERRIDE:-}" ]]; then
+            GEMINI_MODEL_FLAGS=(--model "${GEMINI_MODEL_OVERRIDE}")
+        fi
+        gemini "${GEMINI_MODEL_FLAGS[@]}" --output-format text --yolo --debug < "$PROMPT_FILE"
         ;;
     *)
         echo "Unknown model command: $MODEL_CMD" >&2
@@ -455,10 +485,12 @@ chown "$HOST_UID:$HOST_GID" /tmp/run-as-user.sh
 printf -v su_command \\
     "MODEL_CMD=%q PROMPT_FILE=%q STDERR_FILE=%q REPO_SLUG=%q PR_NUMBER=%q COMMIT_SHA=%q \\
 HOME_OVERRIDE=%q MODEL_REVIEW_PATH=%q CLAUDE_CONFIG_SRC=%q CODEX_CONFIG_SRC=%q \\
-GEMINI_CONFIG_SRC=%q /tmp/run-as-user.sh" \\
+GEMINI_CONFIG_SRC=%q CLAUDE_MODEL_OVERRIDE=%q CODEX_MODEL_OVERRIDE=%q GEMINI_MODEL_OVERRIDE=%q \\
+/tmp/run-as-user.sh" \\
     "$MODEL_CMD" "$PROMPT_FILE" "$STDERR_FILE" "$REPO_SLUG" "$PR_NUMBER" "$COMMIT_SHA" \\
     "$HOME_OVERRIDE" "${MODEL_REVIEW_PATH}" "${CLAUDE_CONFIG_SRC:-}" \\
-    "${CODEX_CONFIG_SRC:-}" "${GEMINI_CONFIG_SRC:-}"
+    "${CODEX_CONFIG_SRC:-}" "${GEMINI_CONFIG_SRC:-}" \\
+    "${CLAUDE_MODEL_OVERRIDE:-}" "${CODEX_MODEL_OVERRIDE:-}" "${GEMINI_MODEL_OVERRIDE:-}"
 
 su "$TARGET_USER" -c "$su_command"
 
