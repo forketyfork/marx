@@ -216,9 +216,9 @@ marx [OPTIONS]
 - `--pr <number>` - Specify PR number directly (skip interactive selection)
 - `--agents <agents>` - Comma- or space-separated list of agents to run (claude, codex, gemini). Append `:<model>` to override the model used by that agent.
   - Default: all agents
-  - **Claude** accepts aliases like `opus`, `sonnet`, and `haiku`, or full release identifiers such as `claude-sonnet-4-5-20250929`.
-  - **Codex** works with OpenAI models including `o3`, `o1`, `o1-mini`, `o4-mini`, `gpt-5`, and `gpt-5-codex`, plus any custom providers configured in `~/.codex/config.toml`.
-  - **Gemini** supports Gemini model IDs such as `gemini-2.5-pro`, `gemini-2.5-flash-preview`, and `gemini-1.5-pro`.
+  - **Claude** accepts aliases like `opus`, `sonnet`, and `haiku`, or full release identifiers such as `claude-sonnet-4-5-20250929`. See the [Claude models documentation](https://docs.claude.com/en/docs/about-claude/models/overview) for available models.
+  - **Codex** works with OpenAI models including `gpt-5` and `gpt-5-codex`, plus any custom providers configured in `~/.codex/config.toml`.
+  - **Gemini** supports model IDs such as `gemini-2.5-flash-lite`, `gemini-2.5-flash`, and `gemini-2.5-pro`. See the [Gemini models documentation](https://ai.google.dev/gemini-api/docs/models) for the complete list of available models.
 - `--repo <owner/repo>` - Repository in the format owner/repo (e.g., acmecorp/my-app)
   - Overrides automatic repository detection
 - `--resume` - Reuse artifacts from the previous run and skip AI execution
