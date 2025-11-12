@@ -7,7 +7,9 @@ from importlib import resources
 from pathlib import Path
 from typing import Final
 
-DOCKER_IMAGE: Final[str] = "marx:latest"
+DEFAULT_DOCKER_IMAGE: Final[str] = "marx:latest"
+DOCKER_IMAGE_ENV_VAR: Final[str] = "MARX_DOCKER_IMAGE"
+DOCKER_IMAGE_CONFIG_KEY: Final[str] = "DOCKER_IMAGE"
 CONTAINER_RUNNER_DIR: Final[str] = "/runner"
 CONTAINER_WORKSPACE_DIR: Final[str] = "/workspace"
 
@@ -131,6 +133,26 @@ def clear_config_cache() -> None:
     """Clear the cached config values (useful for tests)."""
 
     _CONFIG_CACHE.clear()
+
+
+def get_docker_image(config_path: Path | None = None) -> str:
+    """Return the Docker image to use for running agents.
+
+    Precedence order:
+    1. ``MARX_DOCKER_IMAGE`` environment variable
+    2. ``DOCKER_IMAGE`` entry in the Marx config file
+    3. Bundled default image (``marx:latest``)
+    """
+
+    env_override = os.environ.get(DOCKER_IMAGE_ENV_VAR)
+    if env_override:
+        return env_override
+
+    config_override = get_config_value(DOCKER_IMAGE_CONFIG_KEY, config_path)
+    if config_override:
+        return config_override
+
+    return DEFAULT_DOCKER_IMAGE
 
 
 class Colors:

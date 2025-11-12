@@ -15,7 +15,7 @@ from marx.config import (
     AGENT_CONFIG_DIRS,
     CONTAINER_RUNNER_DIR,
     CONTAINER_WORKSPACE_DIR,
-    DOCKER_IMAGE,
+    get_docker_image,
     load_review_prompt_template,
 )
 from marx.exceptions import DockerError
@@ -41,22 +41,23 @@ class DockerRunner:
             self.client = docker.from_env()
         except Exception as e:
             raise DockerError(f"Failed to connect to Docker daemon: {e}") from e
+        self.docker_image = get_docker_image()
 
     def ensure_image(self) -> None:
         """Ensure Docker image exists, build if necessary."""
         try:
-            self.client.images.get(DOCKER_IMAGE)
-            print_info(f"Docker image {DOCKER_IMAGE} already exists")
+            self.client.images.get(self.docker_image)
+            print_info(f"Docker image {self.docker_image} already exists")
         except ImageNotFound:
             self._build_image()
 
     def _build_image(self) -> None:
         """Build the Docker image."""
-        print_info(f"Building Docker image {DOCKER_IMAGE}...")
+        print_info(f"Building Docker image {self.docker_image}...")
         try:
             self.client.images.build(
                 path=str(self.dockerfile_dir),
-                tag=DOCKER_IMAGE,
+                tag=self.docker_image,
                 rm=True,
             )
             print_success("Docker image built successfully")
@@ -236,7 +237,7 @@ class DockerRunner:
 
         try:
             container = self.client.containers.run(
-                DOCKER_IMAGE,
+                self.docker_image,
                 command=[
                     "/bin/bash",
                     container_runner,
