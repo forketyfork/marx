@@ -15,6 +15,7 @@ from marx.config import (
     AGENT_CONFIG_DIRS,
     CONTAINER_RUNNER_DIR,
     CONTAINER_WORKSPACE_DIR,
+    DEFAULT_DOCKER_IMAGE,
     get_docker_image,
     load_review_prompt_template,
 )
@@ -49,7 +50,10 @@ class DockerRunner:
             self.client.images.get(self.docker_image)
             print_info(f"Docker image {self.docker_image} already exists")
         except ImageNotFound:
-            self._build_image()
+            if self.docker_image == DEFAULT_DOCKER_IMAGE:
+                self._build_image()
+            else:
+                self._pull_image()
 
     def _build_image(self) -> None:
         """Build the Docker image."""
@@ -64,6 +68,18 @@ class DockerRunner:
         except BuildError as e:
             logs = "\n".join(line.get("stream", "") for line in e.build_log if "stream" in line)
             raise DockerError(f"Failed to build Docker image:\n{logs}") from e
+
+    def _pull_image(self) -> None:
+        """Pull a custom Docker image."""
+        print_info(f"Pulling Docker image {self.docker_image}...")
+        try:
+            self.client.images.pull(self.docker_image)
+            print_success(f"Docker image {self.docker_image} pulled successfully")
+        except Exception as e:
+            raise DockerError(
+                f"Failed to pull custom Docker image {self.docker_image}: {e}\n"
+                f"Make sure the image exists and is accessible, or use the default image."
+            ) from e
 
     def run_agents_parallel(
         self,
