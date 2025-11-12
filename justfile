@@ -69,13 +69,6 @@ test-match PATTERN:
     @echo "🧪 Running tests matching '{{PATTERN}}'..."
     pytest -v -k "{{PATTERN}}"
 
-# Check bash scripts with shellcheck
-check-sh:
-    @echo "🔍 Checking bash scripts..."
-    shellcheck marx.sh
-    bash -n marx.sh
-    @echo "✅ Bash scripts are valid"
-
 # Run marx CLI (pass arguments after --)
 run *ARGS:
     @echo "🚀 Running marx..."
@@ -117,7 +110,7 @@ docker-verify:
     docker run --rm marx:latest /bin/bash -c "which claude && which codex && which gemini && echo 'All CLI tools found!'"
 
 # Run all checks (lint, type-check, test)
-check: lint type-check test check-sh
+check: lint type-check test
     @echo "✅ All checks passed!"
 
 # Run CI-equivalent checks

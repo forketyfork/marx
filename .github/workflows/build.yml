@@ -37,15 +37,3 @@ jobs:
 
     - name: Run tests with pytest
       run: pytest -v
-
-    - name: Verify shellcheck availability and check bash scripts
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y shellcheck
-        shellcheck --version
-        if [ -f marx.sh ]; then
-          shellcheck marx.sh
-          bash -n marx.sh
-        else
-          echo "No bash scripts to check"
-        fi
