@@ -74,3 +74,34 @@ def test_load_review_prompt_template_honors_override(monkeypatch, tmp_path) -> N
     prompt = marx_config.load_review_prompt_template()
 
     assert prompt == custom_prompt
+
+
+def test_get_docker_image_prefers_environment(monkeypatch, tmp_path) -> None:
+    """Environment variable overrides should take precedence."""
+
+    monkeypatch.setenv("MARX_DOCKER_IMAGE", "custom:image")
+    config_path = _write_config(tmp_path, "DOCKER_IMAGE=config:image\n")
+
+    marx_config.clear_config_cache()
+
+    assert marx_config.get_docker_image(config_path) == "custom:image"
+
+
+def test_get_docker_image_falls_back_to_config(monkeypatch, tmp_path) -> None:
+    """Configuration file entries should be used when env var is absent."""
+
+    monkeypatch.delenv("MARX_DOCKER_IMAGE", raising=False)
+    config_path = _write_config(tmp_path, "DOCKER_IMAGE=config:image\n")
+
+    marx_config.clear_config_cache()
+
+    assert marx_config.get_docker_image(config_path) == "config:image"
+
+
+def test_get_docker_image_uses_default(monkeypatch) -> None:
+    """Default image should be returned when no overrides are present."""
+
+    monkeypatch.delenv("MARX_DOCKER_IMAGE", raising=False)
+    marx_config.clear_config_cache()
+
+    assert marx_config.get_docker_image() == marx_config.DEFAULT_DOCKER_IMAGE
