@@ -59,11 +59,7 @@ def check_dependencies(require_docker: bool = True) -> None:
 def parse_agent_argument(agents_str: str) -> tuple[list[str], dict[str, str]]:
     """Validate and parse agent definitions with optional model overrides."""
 
-    tokens = [
-        token.strip()
-        for token in re.split(r"[\s,]+", agents_str)
-        if token.strip()
-    ]
+    tokens = [token.strip() for token in re.split(r"[\s,]+", agents_str) if token.strip()]
 
     selected: list[str] = []
     model_overrides: dict[str, str] = {}
@@ -83,9 +79,7 @@ def parse_agent_argument(agents_str: str) -> tuple[list[str], dict[str, str]]:
         if has_model:
             model = model_part.strip()
             if not model:
-                raise click.BadParameter(
-                    f"Agent '{agent_part}' is missing a model name after ':'"
-                )
+                raise click.BadParameter(f"Agent '{agent_part}' is missing a model name after ':'")
             model_overrides[agent] = model
 
     if invalid:
@@ -251,9 +245,7 @@ def main(pr: int | None, agent: str | None, repo: str | None, resume: bool) -> N
 
         if model_overrides:
             for agent_name, model_name in model_overrides.items():
-                print_info(
-                    f"Using custom model for {agent_name}: {model_name}"
-                )
+                print_info(f"Using custom model for {agent_name}: {model_name}")
 
         github_client = GitHubClient(repo=repo)
         print_info(f"Repository: {github_client.repo}")

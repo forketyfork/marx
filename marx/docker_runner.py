@@ -18,14 +18,14 @@ from marx.config import (
     DOCKER_IMAGE,
     load_review_prompt_template,
 )
+from marx.exceptions import DockerError
+from marx.ui import print_error, print_info, print_success, print_warning
 
 MODEL_OVERRIDE_ENV_VARS: dict[str, str] = {
     "claude": "CLAUDE_MODEL_OVERRIDE",
     "codex": "CODEX_MODEL_OVERRIDE",
     "gemini": "GEMINI_MODEL_OVERRIDE",
 }
-from marx.exceptions import DockerError
-from marx.ui import print_error, print_info, print_success, print_warning
 
 
 class ReviewPrompt(BaseModel):
@@ -444,7 +444,8 @@ case "$MODEL_CMD" in
         if [[ -n "${CODEX_MODEL_OVERRIDE:-}" ]]; then
             CODEX_MODEL_FLAGS=(--model "${CODEX_MODEL_OVERRIDE}")
         fi
-        codex exec "${CODEX_MODEL_FLAGS[@]}" --dangerously-bypass-approvals-and-sandbox < "$PROMPT_FILE"
+        codex exec "${CODEX_MODEL_FLAGS[@]}" --dangerously-bypass-approvals-and-sandbox \\
+            < "$PROMPT_FILE"
         ;;
     gemini)
         setup_credentials "${GEMINI_CONFIG_SRC:-}" "$HOME/.gemini"
