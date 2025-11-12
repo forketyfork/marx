@@ -1,6 +1,7 @@
 """Command-line interface for Marx."""
 
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -55,18 +56,48 @@ def check_dependencies(require_docker: bool = True) -> None:
         )
 
 
-def validate_agents(agents_str: str) -> list[str]:
-    """Validate and parse agent list."""
-    agents = [a.strip().lower() for a in agents_str.split(",")]
-    invalid = [a for a in agents if a not in SUPPORTED_AGENTS]
+def parse_agent_argument(agents_str: str) -> tuple[list[str], dict[str, str]]:
+    """Validate and parse agent definitions with optional model overrides."""
+
+    tokens = [
+        token.strip()
+        for token in re.split(r"[\s,]+", agents_str)
+        if token.strip()
+    ]
+
+    selected: list[str] = []
+    model_overrides: dict[str, str] = {}
+    invalid: list[str] = []
+
+    for token in tokens:
+        agent_part, has_model, model_part = token.partition(":")
+        agent = agent_part.lower()
+
+        if agent not in SUPPORTED_AGENTS:
+            invalid.append(agent_part or token)
+            continue
+
+        if agent not in selected:
+            selected.append(agent)
+
+        if has_model:
+            model = model_part.strip()
+            if not model:
+                raise click.BadParameter(
+                    f"Agent '{agent_part}' is missing a model name after ':'"
+                )
+            model_overrides[agent] = model
 
     if invalid:
         raise click.BadParameter(
             f"Invalid agent(s): {', '.join(invalid)}. "
-            f"Valid agents are: {', '.join(SUPPORTED_AGENTS)}"
+            f"Valid agents are: {', '.join(sorted(SUPPORTED_AGENTS))}"
         )
 
-    return agents
+    if not selected:
+        raise click.BadParameter("No valid agents specified")
+
+    return selected, model_overrides
 
 
 def select_pr_interactive(github_client: GitHubClient) -> tuple[int, str]:
@@ -161,10 +192,11 @@ def setup_run_directory(
 )
 @click.option(
     "--agent",
+    "--agents",
     type=str,
     help=(
-        f"Comma-separated list of agents to run ({', '.join(SUPPORTED_AGENTS)}). "
-        "Default: all agents"
+        f"Comma- or space-separated list of agents to run ({', '.join(SUPPORTED_AGENTS)}). "
+        "Append :model to override the default model (e.g., claude:opus). Default: all agents"
     ),
 )
 @click.option(
@@ -208,11 +240,20 @@ def main(pr: int | None, agent: str | None, repo: str | None, resume: bool) -> N
         check_dependencies(require_docker)
 
         agents_to_run = list(SUPPORTED_AGENTS)
+        model_overrides: dict[str, str] = {}
         if agent:
-            agents_to_run = validate_agents(agent)
+            parsed_agents, model_overrides = parse_agent_argument(agent)
+            agents_to_run = parsed_agents
             if resume:
                 print_warning("--agent option is ignored when --resume is used")
                 agents_to_run = list(SUPPORTED_AGENTS)
+                model_overrides = {}
+
+        if model_overrides:
+            for agent_name, model_name in model_overrides.items():
+                print_info(
+                    f"Using custom model for {agent_name}: {model_name}"
+                )
 
         github_client = GitHubClient(repo=repo)
         print_info(f"Repository: {github_client.repo}")
@@ -288,7 +329,9 @@ def main(pr: int | None, agent: str | None, repo: str | None, resume: bool) -> N
             )
             print_info("Launching parallel reviews (this may take a few minutes)...")
 
-            docker_runner.run_agents_parallel(agents_to_run, prompt_config, run_dir)
+            docker_runner.run_agents_parallel(
+                agents_to_run, prompt_config, run_dir, model_overrides
+            )
 
             for agent_name in SUPPORTED_AGENTS:
                 output_file = run_dir / f"{agent_name}-review.json"

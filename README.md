@@ -214,8 +214,11 @@ marx [OPTIONS]
 - `--help` - Show help message and exit
 - `--version` - Show version and exit
 - `--pr <number>` - Specify PR number directly (skip interactive selection)
-- `--agent <agents>` - Comma-separated list of agents to run (claude,codex,gemini)
+- `--agent/--agents <agents>` - Comma- or space-separated list of agents to run (claude, codex, gemini). Append `:<model>` to override the model used by that agent.
   - Default: all agents
+  - **Claude** accepts aliases like `opus`, `sonnet`, and `haiku`, or full release identifiers such as `claude-sonnet-4-5-20250929`.
+  - **Codex** works with OpenAI models including `o3`, `o1`, `o1-mini`, `o4-mini`, `gpt-5`, and `gpt-5-codex`, plus any custom providers configured in `~/.codex/config.toml`.
+  - **Gemini** supports Gemini model IDs such as `gemini-2.5-pro`, `gemini-2.5-flash-preview`, and `gemini-1.5-pro`.
 - `--repo <owner/repo>` - Repository in the format owner/repo (e.g., acmecorp/my-app)
   - Overrides automatic repository detection
 - `--resume` - Reuse artifacts from the previous run and skip AI execution
@@ -235,14 +238,20 @@ marx --pr 123 --agent claude
 # Interactive mode with Codex and Gemini
 marx --agent codex,gemini
 
+# Run Claude Opus with Codex defaults
+marx --agent "claude:opus,codex"
+
+# Review with Gemini 2.5 Pro only
+marx --agent "gemini:gemini-2.5-pro"
+
 # Review PRs in specific repository
 marx --repo acmecorp/my-app
 
 # Review specific PR in specific repository
 marx --pr 123 --repo acmecorp/my-app
 
-# Review specific PR with multiple selected agents
-marx --pr 456 --agent claude,gemini
+# Review specific PR with custom Claude + Gemini models
+marx --pr 456 --agent "claude:sonnet,gemini:gemini-1.5-pro"
 
 # Resume from previous run without rerunning agents
 marx --resume --pr 123
