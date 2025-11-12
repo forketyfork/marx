@@ -249,12 +249,17 @@ def main(pr: int | None, agents: str | None, repo: str | None, resume: bool) -> 
         github_client = GitHubClient(repo=repo)
         print_info(f"Repository: {github_client.repo}")
 
+        print_header("🔍 Validating repository and PR...")
+        github_client.validate_repository()
+        print_success(f"Repository {github_client.repo} is accessible")
+
         if not os.environ.get("GITHUB_TOKEN"):
             print_warning("GITHUB_TOKEN environment variable is not set")
             print_info("The AI agents may not be able to access GitHub API inside the container")
 
         if pr:
             print_info(f"Using PR #{pr} from command line")
+            github_client.validate_pr(pr)
             pr_data = github_client.get_pr(pr)
             pr_number = pr_data["number"]
             branch_name = pr_data["headRefName"]

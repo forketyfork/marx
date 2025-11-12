@@ -93,6 +93,28 @@ class GitHubClient:
 
         return None
 
+    def validate_repository(self) -> None:
+        """Validate that the repository exists and is accessible."""
+        try:
+            self._run_gh_command(
+                ["repo", "view", self.repo, "--json", "nameWithOwner", "--jq", ".nameWithOwner"]
+            )
+        except GitHubAPIError as e:
+            raise GitHubAPIError(
+                f"Repository '{self.repo}' not found or not accessible. "
+                "Please check the repository name and your GitHub permissions."
+            ) from e
+
+    def validate_pr(self, pr_number: int) -> None:
+        """Validate that the PR exists and is accessible."""
+        try:
+            self._run_gh_command(["pr", "view", str(pr_number), "--repo", self.repo])
+        except GitHubAPIError:
+            raise GitHubAPIError(
+                f"PR #{pr_number} not found in repository '{self.repo}'. "
+                "Please check the PR number."
+            ) from None
+
     def get_current_user(self) -> str:
         """Get the current GitHub username."""
         try:
