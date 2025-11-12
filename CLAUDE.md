@@ -17,7 +17,7 @@ direnv allow
 ### Common Commands (via Just)
 ```bash
 just                    # List all available commands
-just check              # Run all checks (lint + type-check + test + check-sh)
+just check              # Run all checks (lint + type-check + test)
 just lint               # Run all linters (black, ruff, mypy)
 just format             # Format code with black
 just fix                # Auto-fix ruff issues and format

@@ -110,7 +110,7 @@ def display_issue(issue: dict, priority_emoji: str) -> None:
     panel_content = (
         f"🤖 Agent: [bold magenta]{agent}[/bold magenta]\n"
         f"📁 [bold cyan]{file_path}:{line}[/bold cyan]\n"
-        f"🏷️  [bold]{category}[/bold]\n\n"
+        f"🏷️ [bold]{category}[/bold]\n\n"
         f"[bold]Issue:[/bold] {description}\n\n"
         f"[bold green]💡 Fix:[/bold green] {proposed_fix}"
     )
