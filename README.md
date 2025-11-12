@@ -252,7 +252,7 @@ marx --resume --pr 123
 
 ### 1. Setup & Validation
 - Checks for required dependencies (git, gh, jq, docker)
-- Builds Docker image `marx:latest` if not present
+- Builds the configured Docker image (default: `marx:latest`) if not present
 - Validates `GITHUB_TOKEN` environment variable
 - Confirms current directory is a git repository
 
@@ -377,6 +377,25 @@ Marx uses a Docker image containing:
 - **Development Tools**: git, jq, and other utilities
 
 The image is built automatically on first run using the Dockerfile in this repository.
+
+### Customizing the Docker image
+
+You can run Marx with a different Docker image by setting the `MARX_DOCKER_IMAGE`
+environment variable or by adding `DOCKER_IMAGE=your/image:tag` to your `~/.marx`
+configuration file. The environment variable takes precedence over the config file,
+and both fall back to the bundled `marx:latest` image when unspecified.
+
+When supplying a custom image make sure it satisfies the baseline requirements expected
+by the runner script:
+
+- A Linux base with `/bin/bash`, core utilities, and the ability to create users via `useradd`
+- `git`, `gh` (GitHub CLI), and `jq`
+- Search and navigation tools: `rg`, `fd`, `tree`
+- Code editing helpers: `fastmod`, `ast-grep` (available as `sg`)
+- The CLI tools for any agents you intend to run (`claude`, `codex`, `gemini`)
+
+Images missing these tools will fail at runtime, so verify your custom build before
+invoking Marx.
 
 ## Error Handling
 
