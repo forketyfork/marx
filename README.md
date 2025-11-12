@@ -214,7 +214,7 @@ marx [OPTIONS]
 - `--help` - Show help message and exit
 - `--version` - Show version and exit
 - `--pr <number>` - Specify PR number directly (skip interactive selection)
-- `--agent/--agents <agents>` - Comma- or space-separated list of agents to run (claude, codex, gemini). Append `:<model>` to override the model used by that agent.
+- `--agents <agents>` - Comma- or space-separated list of agents to run (claude, codex, gemini). Append `:<model>` to override the model used by that agent.
   - Default: all agents
   - **Claude** accepts aliases like `opus`, `sonnet`, and `haiku`, or full release identifiers such as `claude-sonnet-4-5-20250929`.
   - **Codex** works with OpenAI models including `o3`, `o1`, `o1-mini`, `o4-mini`, `gpt-5`, and `gpt-5-codex`, plus any custom providers configured in `~/.codex/config.toml`.
@@ -233,16 +233,16 @@ marx
 marx --pr 123
 
 # Review PR #123 with Claude only
-marx --pr 123 --agent claude
+marx --pr 123 --agents claude
 
 # Interactive mode with Codex and Gemini
-marx --agent codex,gemini
+marx --agents codex,gemini
 
 # Run Claude Opus with Codex defaults
-marx --agent "claude:opus,codex"
+marx --agents "claude:opus,codex"
 
 # Review with Gemini 2.5 Pro only
-marx --agent "gemini:gemini-2.5-pro"
+marx --agents "gemini:gemini-2.5-pro"
 
 # Review PRs in specific repository
 marx --repo acmecorp/my-app
@@ -251,7 +251,7 @@ marx --repo acmecorp/my-app
 marx --pr 123 --repo acmecorp/my-app
 
 # Review specific PR with custom Claude + Gemini models
-marx --pr 456 --agent "claude:sonnet,gemini:gemini-1.5-pro"
+marx --pr 456 --agents "claude:sonnet,gemini:gemini-1.5-pro"
 
 # Resume from previous run without rerunning agents
 marx --resume --pr 123
@@ -289,7 +289,7 @@ Determines repository slug (owner/name) using three methods in order:
 - Symlinks `.claude` directory from original repo
 
 ### 5. Parallel AI Code Review
-- If `--agent` is specified: runs only the selected agents
+- If `--agents` is specified: runs only the selected agents
 - Otherwise: runs all three agents (claude, codex, gemini)
 
 Each AI model receives a detailed prompt instructing it to:

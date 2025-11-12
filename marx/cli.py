@@ -185,7 +185,6 @@ def setup_run_directory(
     help="Specify PR number directly (skip interactive selection)",
 )
 @click.option(
-    "--agent",
     "--agents",
     type=str,
     help=(
@@ -204,7 +203,7 @@ def setup_run_directory(
     help="Reuse artifacts from the previous run and skip AI execution",
 )
 @click.version_option()
-def main(pr: int | None, agent: str | None, repo: str | None, resume: bool) -> None:
+def main(pr: int | None, agents: str | None, repo: str | None, resume: bool) -> None:
     """Interactive script to fetch open GitHub PRs with reviewers, create a git worktree,
     and run automated code review with multiple AI models (Claude, Codex, Gemini).
 
@@ -221,8 +220,8 @@ def main(pr: int | None, agent: str | None, repo: str | None, resume: bool) -> N
     Examples:
       marx                                        # Interactive mode with all agents
       marx --pr 123                               # Review PR #123 with all agents
-      marx --pr 123 --agent claude                # Review PR #123 with Claude only
-      marx --agent codex,gemini                   # Interactive mode with Codex and Gemini
+      marx --pr 123 --agents claude                # Review PR #123 with Claude only
+      marx --agents codex,gemini                   # Interactive mode with Codex and Gemini
       marx --repo acmecorp/my-app               # Review PRs in specific repository
       marx --pr 123 --repo acmecorp/my-app      # Review specific PR in specific repository
       marx --resume --pr 123                      # Reuse artifacts without rerunning agents
@@ -235,11 +234,11 @@ def main(pr: int | None, agent: str | None, repo: str | None, resume: bool) -> N
 
         agents_to_run = list(SUPPORTED_AGENTS)
         model_overrides: dict[str, str] = {}
-        if agent:
-            parsed_agents, model_overrides = parse_agent_argument(agent)
+        if agents:
+            parsed_agents, model_overrides = parse_agent_argument(agents)
             agents_to_run = parsed_agents
             if resume:
-                print_warning("--agent option is ignored when --resume is used")
+                print_warning("--agents option is ignored when --resume is used")
                 agents_to_run = list(SUPPORTED_AGENTS)
                 model_overrides = {}
 

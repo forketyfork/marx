@@ -61,7 +61,7 @@ mypy marx                             # Type check
 # Run Marx
 marx                                  # Interactive mode
 marx --pr 123                         # Review specific PR
-marx --pr 123 --agent claude          # Review with specific agent(s)
+marx --pr 123 --agents claude         # Review with specific agent(s)
 marx --resume --pr 123                # Resume from previous artifacts
 ```
 
@@ -80,7 +80,7 @@ Marx is a CLI tool that orchestrates parallel AI code reviews of GitHub PRs usin
 - Entry point that coordinates the entire workflow
 - Handles dependency checking, PR selection, and result display
 - Manages the run directory lifecycle for storing artifacts
-- Creates placeholders for agents not selected with `--agent` flag
+- Creates placeholders for agents not selected with `--agents` flag
 - Supports `--resume` mode to skip re-running agents
 
 **GitHub API Client** (`marx/github.py`):
@@ -196,4 +196,4 @@ Optional:
 - Agent failures produce empty reviews with error descriptions (non-fatal)
 - Invalid JSON from agents is handled gracefully with placeholder reviews
 - Resume mode reuses previous agent outputs and skips Docker execution
-- Agents not selected via `--agent` flag receive placeholder "Not run" reviews
+- Agents not selected via `--agents` flag receive placeholder "Not run" reviews
