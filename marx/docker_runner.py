@@ -296,7 +296,7 @@ class DockerRunner:
             return str(container)
 
         except ContainerError as e:
-            stderr_content = self._read_stderr_file(run_path / stderr_file.name)
+            stderr_content = self._read_stderr_file(run_path / stderr_file.name, environment)
             if stderr_content:
                 raise DockerError(f"Container execution failed: {stderr_content}") from e
             raise DockerError(f"Container execution failed: {e}") from e
@@ -304,13 +304,32 @@ class DockerRunner:
             raise DockerError(f"Unexpected error running container: {e}") from e
 
     @staticmethod
-    def _read_stderr_file(stderr_file: Path) -> str:
-        """Read stderr file content if it exists and is non-empty."""
-        if stderr_file.exists():
-            content = stderr_file.read_text().strip()
-            if content:
-                return content
-        return ""
+    def _read_stderr_file(stderr_file: Path, environment: dict[str, str]) -> str:
+        """Read stderr file content if it exists and is non-empty.
+
+        Redacts sensitive values (tokens, API keys) from the content to prevent
+        credential leakage in error messages.
+        """
+        if not stderr_file.exists():
+            return ""
+
+        content = stderr_file.read_text().strip()
+        if not content:
+            return ""
+
+        sensitive_keys = [
+            "GITHUB_TOKEN",
+            "ANTHROPIC_API_KEY",
+            "OPENAI_API_KEY",
+            "GOOGLE_API_KEY",
+            "GEMINI_API_KEY",
+        ]
+        for key in sensitive_keys:
+            value = environment.get(key, "")
+            if value:
+                content = content.replace(value, "[REDACTED]")
+
+        return content
 
     def _generate_prompt(self, config: ReviewPrompt, agent: str) -> str:
         """Generate the review prompt for an agent."""
