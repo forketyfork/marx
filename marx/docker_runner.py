@@ -296,9 +296,21 @@ class DockerRunner:
             return str(container)
 
         except ContainerError as e:
+            stderr_content = self._read_stderr_file(run_path / stderr_file.name)
+            if stderr_content:
+                raise DockerError(f"Container execution failed: {stderr_content}") from e
             raise DockerError(f"Container execution failed: {e}") from e
         except Exception as e:
             raise DockerError(f"Unexpected error running container: {e}") from e
+
+    @staticmethod
+    def _read_stderr_file(stderr_file: Path) -> str:
+        """Read stderr file content if it exists and is non-empty."""
+        if stderr_file.exists():
+            content = stderr_file.read_text().strip()
+            if content:
+                return content
+        return ""
 
     def _generate_prompt(self, config: ReviewPrompt, agent: str) -> str:
         """Generate the review prompt for an agent."""
@@ -401,6 +413,8 @@ clone_repository() {
     export GIT_TERMINAL_PROMPT=0
     if [ -n "${GITHUB_TOKEN:-}" ]; then
         export GH_TOKEN="${GITHUB_TOKEN}"
+        # Configure git to use token for HTTPS authentication
+        git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
     fi
 
     mkdir -p /workspace
@@ -484,11 +498,11 @@ chown "$HOST_UID:$HOST_GID" /tmp/run-as-user.sh
 
 printf -v su_command \\
     "MODEL_CMD=%q PROMPT_FILE=%q STDERR_FILE=%q REPO_SLUG=%q PR_NUMBER=%q COMMIT_SHA=%q \\
-HOME_OVERRIDE=%q MODEL_REVIEW_PATH=%q CLAUDE_CONFIG_SRC=%q CODEX_CONFIG_SRC=%q \\
+HOME_OVERRIDE=%q MODEL_REVIEW_PATH=%q GITHUB_TOKEN=%q CLAUDE_CONFIG_SRC=%q CODEX_CONFIG_SRC=%q \\
 GEMINI_CONFIG_SRC=%q CLAUDE_MODEL_OVERRIDE=%q CODEX_MODEL_OVERRIDE=%q GEMINI_MODEL_OVERRIDE=%q \\
 /tmp/run-as-user.sh" \\
     "$MODEL_CMD" "$PROMPT_FILE" "$STDERR_FILE" "$REPO_SLUG" "$PR_NUMBER" "$COMMIT_SHA" \\
-    "$HOME_OVERRIDE" "${MODEL_REVIEW_PATH}" "${CLAUDE_CONFIG_SRC:-}" \\
+    "$HOME_OVERRIDE" "${MODEL_REVIEW_PATH}" "${GITHUB_TOKEN:-}" "${CLAUDE_CONFIG_SRC:-}" \\
     "${CODEX_CONFIG_SRC:-}" "${GEMINI_CONFIG_SRC:-}" \\
     "${CLAUDE_MODEL_OVERRIDE:-}" "${CODEX_MODEL_OVERRIDE:-}" "${GEMINI_MODEL_OVERRIDE:-}"
 
