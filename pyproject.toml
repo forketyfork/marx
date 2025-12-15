@@ -3,27 +3,32 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "marx"
+name = "marx-ai"
 version = "1.0.0"
 description = "Automated multi-agent code review tool for GitHub PRs"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     {name = "Marx Contributors"}
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-
 dependencies = [
     "click>=8.1.0",
     "rich>=13.7.0",
     "docker>=7.0.0",
     "pydantic>=2.5.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/forketyfork/marx"
+Repository = "https://github.com/forketyfork/marx"
+Issues = "https://github.com/forketyfork/marx/issues"
 
 [project.optional-dependencies]
 dev = [

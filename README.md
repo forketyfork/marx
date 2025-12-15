@@ -74,13 +74,14 @@ just check
 ### Option 1: Install the published package from PyPI
 
 If you simply want to use Marx and do not need the repository checked out locally, install the
-published package directly from [PyPI](https://pypi.org/project/marx/):
+published package directly from [PyPI](https://pypi.org/project/marx-ai/) using [uv](https://docs.astral.sh/uv/):
 
 ```bash
-pip install marx
+# Install globally
+uv tool install marx-ai
 
-# or with pipx for an isolated environment
-pipx install marx
+# Or run without installing
+uvx marx-ai
 ```
 
 After installation the `marx` CLI will be on your `PATH` and you can run `marx --help` to verify
@@ -105,7 +106,7 @@ nix run .
 nix develop
 ```
 
-### Option 3: From source with pip
+### Option 3: From source with uv
 
 For standard Python environments when working from a clone of the repository:
 
@@ -115,13 +116,13 @@ git clone https://github.com/forketyfork/marx.git
 cd marx
 
 # Install globally
-pip install .
+uv pip install .
 
 # Or install in editable mode for development
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 ```
 
-**Note**: If you're using Nix, `pip install` will fail because Nix's Python environment is read-only. Use the Nix installation methods above instead.
+**Note**: If you're using Nix, `uv pip install` will fail because Nix's Python environment is read-only. Use the Nix installation methods above instead.
 
 ### Running Marx
 
@@ -522,7 +523,7 @@ The Python codebase includes a comprehensive test suite. To run tests manually:
 
 ```bash
 # Install development dependencies
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 
 # Run tests with coverage
 pytest
@@ -584,7 +585,7 @@ workflow level. When a GitHub release is published, the same workflow also pushe
 
 - Create a PyPI [API token](https://pypi.org/help/#apitoken).
 - Add the token to the repository secrets as `PYPI_API_TOKEN` (set the username to `__token__`).
-- Ensure the token has permission to upload to the `marx` project on PyPI.
+- Ensure the token has permission to upload to the `marx-ai` project on PyPI.
 
 Manual runs of the workflow via **Run workflow** in the Actions tab will build and attach the distributions without
 publishing them, making it easy to validate the packaging process before performing a release.
