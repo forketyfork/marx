@@ -17,6 +17,7 @@ from marx.config import (
     CONTAINER_WORKSPACE_DIR,
     DEFAULT_DOCKER_IMAGE,
     get_docker_image,
+    load_dedup_prompt_template,
     load_review_prompt_template,
 )
 from marx.exceptions import DockerError
@@ -130,25 +131,52 @@ class DockerRunner:
 
         return results
 
+    def run_deduplication_agent(
+        self,
+        agent: str,
+        prompt_config: ReviewPrompt,
+        run_path: Path,
+        review_files: dict[str, Path],
+        model_override: str | None = None,
+    ) -> Path:
+        """Run a follow-up deduplication pass with the selected agent."""
+
+        prompt = self._generate_dedup_prompt(prompt_config, agent, review_files)
+
+        return self._run_single_agent(
+            agent,
+            prompt_config,
+            run_path,
+            model_override,
+            prompt_override=prompt,
+            output_basename="dedup-review.json",
+        )
+
     def _run_single_agent(
         self,
         agent: str,
         prompt_config: ReviewPrompt,
         run_path: Path,
         model_override: str | None = None,
+        *,
+        prompt_override: str | None = None,
+        output_basename: str | None = None,
     ) -> Path:
         """Run a single agent in a Docker container."""
         print_info(f"Starting {agent.capitalize()} analysis...")
 
-        output_file = run_path / f"{agent}-review.json"
-        raw_output_file = run_path / f"{agent}-raw.jsonl"
-        stderr_file = run_path / f"{agent}-review.json.stderr"
+        base_name = output_basename or f"{agent}-review.json"
+        base_stem = Path(base_name).stem
+
+        output_file = run_path / base_name
+        raw_output_file = run_path / f"{base_stem}-raw.jsonl"
+        stderr_file = run_path / f"{base_stem}.stderr"
 
         output_file.unlink(missing_ok=True)
         raw_output_file.unlink(missing_ok=True)
         stderr_file.unlink(missing_ok=True)
 
-        prompt = self._generate_prompt(prompt_config, agent)
+        prompt = prompt_override or self._generate_prompt(prompt_config, agent)
 
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".txt", dir=run_path, delete=False
@@ -173,6 +201,7 @@ class DockerRunner:
                 runner_script_path,
                 stderr_file,
                 model_override,
+                base_name,
             )
 
             raw_output_file.write_text(container_output)
@@ -191,7 +220,7 @@ class DockerRunner:
                     print_warning(
                         f"{agent.capitalize()} produced invalid JSON, creating error review"
                     )
-                    invalid_file = run_path / f"{agent}-review.json.invalid"
+                    invalid_file = output_file.with_suffix(f"{output_file.suffix}.invalid")
                     shutil.move(output_file, invalid_file)
                     self._create_error_review(
                         output_file, prompt_config.pr_number, agent, "produced invalid JSON"
@@ -224,6 +253,7 @@ class DockerRunner:
         runner_script_path: Path,
         stderr_file: Path,
         model_override: str | None = None,
+        output_basename: str | None = None,
     ) -> str:
         """Run a Docker container and return its output."""
         host_uid = os.getuid()
@@ -232,6 +262,7 @@ class DockerRunner:
         container_prompt = f"{CONTAINER_RUNNER_DIR}/{prompt_path.name}"
         container_runner = f"{CONTAINER_RUNNER_DIR}/{runner_script_path.name}"
         container_stderr = f"{CONTAINER_RUNNER_DIR}/{stderr_file.name}"
+        container_output_name = output_basename or f"{agent}-review.json"
 
         volumes = {
             str(run_path): {"bind": CONTAINER_RUNNER_DIR, "mode": "rw"},
@@ -247,9 +278,9 @@ class DockerRunner:
             "HOST_UID": str(host_uid),
             "HOST_GID": str(host_gid),
             "CONTAINER_RUNNER_DIR": CONTAINER_RUNNER_DIR,
-            "MODEL_REVIEW_PATH": f"{CONTAINER_RUNNER_DIR}/{agent}-review.json",
+            "MODEL_REVIEW_PATH": f"{CONTAINER_RUNNER_DIR}/{container_output_name}",
             "MODEL_REVIEW_WORKSPACE_PATH": (
-                f"{CONTAINER_WORKSPACE_DIR}/repo/.marx/{agent}-review.json"
+                f"{CONTAINER_WORKSPACE_DIR}/repo/.marx/{container_output_name}"
             ),
         }
 
@@ -340,6 +371,28 @@ class DockerRunner:
             commit_sha=config.commit_sha,
             agent=agent,
             container_workspace_dir=CONTAINER_WORKSPACE_DIR,
+        )
+
+    def _generate_dedup_prompt(
+        self, config: ReviewPrompt, agent: str, review_files: dict[str, Path]
+    ) -> str:
+        """Generate a prompt instructing the agent to deduplicate review issues."""
+
+        template = load_dedup_prompt_template()
+
+        review_sources = "\n".join(
+            f"- {name}: {CONTAINER_RUNNER_DIR}/{path.name}" for name, path in review_files.items()
+        )
+
+        return template.format(
+            pr_number=config.pr_number,
+            repo=config.repo,
+            commit_sha=config.commit_sha,
+            agent=agent,
+            review_sources=review_sources,
+            container_runner_dir=CONTAINER_RUNNER_DIR,
+            container_workspace_dir=CONTAINER_WORKSPACE_DIR,
+            output_file_name="dedup-review.json",
         )
 
     def _generate_runner_script(self) -> str:
@@ -517,12 +570,12 @@ chown "$HOST_UID:$HOST_GID" /tmp/run-as-user.sh
 
 printf -v su_command \\
     "MODEL_CMD=%q PROMPT_FILE=%q STDERR_FILE=%q REPO_SLUG=%q PR_NUMBER=%q COMMIT_SHA=%q \\
-HOME_OVERRIDE=%q MODEL_REVIEW_PATH=%q GITHUB_TOKEN=%q CLAUDE_CONFIG_SRC=%q CODEX_CONFIG_SRC=%q \\
-GEMINI_CONFIG_SRC=%q CLAUDE_MODEL_OVERRIDE=%q CODEX_MODEL_OVERRIDE=%q GEMINI_MODEL_OVERRIDE=%q \\
-/tmp/run-as-user.sh" \\
+HOME_OVERRIDE=%q MODEL_REVIEW_PATH=%q MODEL_REVIEW_WORKSPACE_PATH=%q GITHUB_TOKEN=%q \\
+CLAUDE_CONFIG_SRC=%q CODEX_CONFIG_SRC=%q GEMINI_CONFIG_SRC=%q CLAUDE_MODEL_OVERRIDE=%q \\
+CODEX_MODEL_OVERRIDE=%q GEMINI_MODEL_OVERRIDE=%q /tmp/run-as-user.sh" \\
     "$MODEL_CMD" "$PROMPT_FILE" "$STDERR_FILE" "$REPO_SLUG" "$PR_NUMBER" "$COMMIT_SHA" \\
-    "$HOME_OVERRIDE" "${MODEL_REVIEW_PATH}" "${GITHUB_TOKEN:-}" "${CLAUDE_CONFIG_SRC:-}" \\
-    "${CODEX_CONFIG_SRC:-}" "${GEMINI_CONFIG_SRC:-}" \\
+    "$HOME_OVERRIDE" "${MODEL_REVIEW_PATH}" "${MODEL_REVIEW_WORKSPACE_PATH}" "${GITHUB_TOKEN:-}" \\
+    "${CLAUDE_CONFIG_SRC:-}" "${CODEX_CONFIG_SRC:-}" "${GEMINI_CONFIG_SRC:-}" \\
     "${CLAUDE_MODEL_OVERRIDE:-}" "${CODEX_MODEL_OVERRIDE:-}" "${GEMINI_MODEL_OVERRIDE:-}"
 
 su "$TARGET_USER" -c "$su_command"

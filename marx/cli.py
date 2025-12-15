@@ -281,7 +281,11 @@ def main(pr: int | None, agents: str | None, repo: str | None, resume: bool) -> 
         claude_output = run_dir / "claude-review.json"
         codex_output = run_dir / "codex-review.json"
         gemini_output = run_dir / "gemini-review.json"
+        dedup_output = run_dir / "dedup-review.json"
         merged_output = run_dir / "merged-review.json"
+
+        if not resume:
+            dedup_output.unlink(missing_ok=True)
 
         if resume:
             print_header("⏩ Resume Mode: Reusing previous agent results")
@@ -329,6 +333,22 @@ def main(pr: int | None, agents: str | None, repo: str | None, resume: bool) -> 
                 agents_to_run, prompt_config, run_dir, model_overrides
             )
 
+            if len(agents_to_run) > 1:
+                print_header(f"🧹 Deduplicating issues with {agents_to_run[0].capitalize()}")
+                review_files = {agent: run_dir / f"{agent}-review.json" for agent in agents_to_run}
+
+                try:
+                    docker_runner.run_deduplication_agent(
+                        agents_to_run[0],
+                        prompt_config,
+                        run_dir,
+                        review_files,
+                        model_overrides.get(agents_to_run[0]),
+                    )
+                    print_success("Deduplication pass completed")
+                except Exception as exc:
+                    print_warning(f"Deduplication step failed: {exc}")
+
             for agent_name in SUPPORTED_AGENTS:
                 output_file = run_dir / f"{agent_name}-review.json"
                 if agent_name not in agents_to_run:
@@ -346,7 +366,7 @@ def main(pr: int | None, agents: str | None, repo: str | None, resume: bool) -> 
                         json.dump(placeholder, f)
 
         print_info("Merging results from all models...")
-        merged_review = merge_reviews(claude_output, codex_output, gemini_output)
+        merged_review = merge_reviews(claude_output, codex_output, gemini_output, dedup_output)
         save_merged_review(merged_review, merged_output)
 
         print_success("Merged code review completed! 📝")

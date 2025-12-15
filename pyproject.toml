@@ -42,7 +42,7 @@ marx = "marx.cli:main"
 include = ["marx*"]
 
 [tool.setuptools.package-data]
-"marx.prompts" = ["review_prompt.md"]
+"marx.prompts" = ["review_prompt.md", "dedup_prompt.md"]
 
 [tool.black]
 line-length = 100

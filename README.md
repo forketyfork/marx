@@ -203,6 +203,19 @@ The default review instructions provided to each agent are stored in the package
 to your `~/.marx` configuration file. The template supports the placeholders `{pr_number}`, `{repo}`,
 `{commit_sha}`, `{agent}`, and `{container_workspace_dir}`, which are replaced at runtime.
 
+### Deduplication prompt
+
+When more than one agent is selected, Marx automatically invokes the first agent in the
+list for a follow-up deduplication pass. This step reads the individual review outputs, asks
+the agent to merge duplicate issues, and writes the consolidated results to
+`runs/<pr>/dedup-review.json`, ensuring the `agent` field lists all reporting agents as a
+comma-separated value. You can customize the deduplication instructions by providing a
+template at `MARX_DEDUP_PROMPT_PATH` or `DEDUP_PROMPT_PATH` (in `~/.marx`). The bundled
+template lives at `marx/prompts/dedup_prompt.md`. The Docker runner copies this file from
+`.marx/dedup-review.json` in the workspace back to the run directory, so keep custom output
+names aligned with that location. The template is rendered with Python string formatting, so
+escape any literal braces as `{{` and `}}` when editing to avoid malformed prompts.
+
 ## Usage
 
 ```bash

@@ -62,6 +62,7 @@ def merge_reviews(
     claude_file: Path,
     codex_file: Path,
     gemini_file: Path,
+    dedup_file: Path | None = None,
 ) -> MergedReview:
     """Merge reviews from all agents."""
     reviews = {
@@ -69,6 +70,8 @@ def merge_reviews(
         "codex": load_review(codex_file),
         "gemini": load_review(gemini_file),
     }
+
+    dedup_review = load_review(dedup_file) if dedup_file and dedup_file.exists() else None
 
     descriptions = [
         {"agent": agent, "description": review.pr_summary.description or "No description"}
@@ -81,9 +84,12 @@ def merge_reviews(
         title=first_review.pr_summary.title,
     )
 
-    all_issues: list[Issue] = []
-    for review in reviews.values():
-        all_issues.extend(review.issues)
+    if dedup_review:
+        all_issues: list[Issue] = list(dedup_review.issues)
+    else:
+        all_issues = []
+        for review in reviews.values():
+            all_issues.extend(review.issues)
 
     all_issues.sort(key=lambda issue: PRIORITY_ORDER.get(issue.priority, 999))
 
