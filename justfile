@@ -143,3 +143,68 @@ info:
     @echo ""
     @echo "Python Package Status:"
     @python -c "import marx; print(f'  marx: {marx.__version__}')" 2>/dev/null || echo "  marx: not installed"
+
+# Release helper: update versions, commit, tag, and push
+release VERSION:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    VERSION="{{VERSION}}"
+
+    if [[ -z "${VERSION}" ]]; then
+        echo "❌ Version is required (e.g., v0.1.1)"
+        exit 1
+    fi
+
+    if ! [[ "${VERSION}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "❌ Version must look like v0.1.1 or 0.1.1"
+        exit 1
+    fi
+
+    if [[ -n "$(git status --porcelain)" ]]; then
+        echo "❌ Working tree is not clean. Commit or stash changes before releasing."
+        exit 1
+    fi
+
+    if git rev-parse "refs/tags/${VERSION}" >/dev/null 2>&1; then
+        echo "❌ Tag ${VERSION} already exists."
+        exit 1
+    fi
+
+    echo "🔖 Updating versions to ${VERSION}..."
+    python - <<'PY' "${VERSION}"
+import pathlib
+import re
+import sys
+
+version = sys.argv[1]
+root = pathlib.Path(__file__).resolve().parent
+
+updates = {
+    root / "pyproject.toml": (r'(?m)^version\s*=\s*"[^"]+"', f'version = "{version}"'),
+    root / "marx" / "__init__.py": (r'(?m)^__version__\s*=\s*"[^"]+"', f'__version__ = "{version}"'),
+    root / "flake.nix": (r'(?m)^\s*version\s*=\s*"[^"]+"\s*;', f'    version = "{version}";'),
+}
+
+for path, (pattern, replacement) in updates.items():
+    text = path.read_text()
+    new_text, count = re.subn(pattern, replacement, text)
+    if count == 0:
+        sys.exit(f"Failed to update version in {path}")
+    path.write_text(new_text)
+    print(f"{path.name} -> {version}")
+PY
+
+    git status --short
+
+    echo "✅ Committing release..."
+    git commit -am "chore: release ${VERSION}"
+
+    echo "🏷️  Tagging ${VERSION}..."
+    git tag -a "${VERSION}" -m "Release ${VERSION}"
+
+    echo "🚀 Pushing commit and tag..."
+    git push origin HEAD
+    git push origin "${VERSION}"
+
+    echo "🎉 Release ${VERSION} created and pushed."

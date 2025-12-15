@@ -4,12 +4,33 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/language-Python-blue.svg)](https://www.python.org/)
 
-An interactive CLI tool for automated multi-model AI code review of GitHub Pull Requests. Marx fetches open PRs, creates a git worktree, and runs parallel code reviews using three AI models (Claude, Codex, and Gemini).
+An interactive CLI tool for automated multi-model AI code review of GitHub Pull Requests. Marx fetches open PRs and runs parallel code reviews inside Docker using three AI models (Claude, Codex, and Gemini) without modifying your local repository.
+
+## TL;DR: Install, Configure, Run
+
+```bash
+# 1) Install (no checkout needed)
+uv tool install marx-ai
+
+# 2) Configure credentials
+cat > ~/.marx <<'EOF'
+GITHUB_TOKEN=ghp_your_token_here
+ANTHROPIC_API_KEY=your_claude_key
+OPENAI_API_KEY=your_openai_key
+GEMINI_API_KEY=your_gemini_key
+# Optional: override repo detection
+# MARX_REPO=owner/repo
+EOF
+
+# 3) Run on a repo with all agents
+cd /path/to/your/git/repo
+marx --pr 123 --agents claude,codex,gemini
+```
 
 ## Features
 
 - **Multi-Model AI Review**: Runs Claude, Codex, and Gemini in parallel for comprehensive code analysis
-- **Git Worktree Integration**: Creates isolated worktrees for safe PR review without affecting your main branch
+- **Containerized Checkout**: Clones the PR branch inside Docker so your local repo stays untouched
 - **Intelligent PR Filtering**: Automatically filters PRs where you're not the author or reviewer
 - **Docker Isolation**: All AI models run in containers with proper permissions
 - **Structured Output**: JSON-formatted results with priority-based issue categorization
@@ -22,52 +43,7 @@ The following tools must be installed:
 
 - `git` - Version control
 - `gh` - GitHub CLI (must be authenticated)
-- `jq` - JSON processing
 - `docker` - Container runtime
-
-## Quick Start with Nix (Recommended for Development)
-
-If you have [Nix](https://nixos.org/download.html) with flakes enabled:
-
-```bash
-# Clone the repository
-git clone https://github.com/forketyfork/marx.git
-cd marx
-
-# Enter the development environment
-nix develop
-
-# Or use direnv for automatic environment loading
-direnv allow
-```
-
-The Nix flake provides:
-- Python 3.12 with all dependencies
-- System tools (git, gh, jq, docker)
-- Development tools (pytest, black, ruff, mypy)
-- Just command runner for common tasks
-
-### Using Just Commands
-
-```bash
-# See all available commands
-just
-
-# Run linters
-just lint
-
-# Run tests
-just test
-
-# Run marx
-just run
-
-# Install package in editable mode
-just install
-
-# Run all checks (CI equivalent)
-just check
-```
 
 ## Installation
 
@@ -129,6 +105,53 @@ uv pip install -e ".[dev]"
 After installation, run:
 ```bash
 marx
+```
+
+## Quick Start with Nix (Recommended for Development)
+
+If you have [Nix](https://nixos.org/download.html) with flakes enabled:
+
+```bash
+# Clone the repository
+git clone https://github.com/forketyfork/marx.git
+cd marx
+
+# Enter the development environment
+nix develop
+
+# Or use direnv for automatic environment loading
+direnv allow
+```
+
+The Nix flake provides:
+- Python 3.12 with all dependencies
+- System tools (git, gh, docker)
+- Development tools (pytest, black, ruff, mypy)
+- Just command runner for common tasks
+
+### Using Just Commands
+
+```bash
+# See all available commands
+just
+
+# Run linters
+just lint
+
+# Run tests
+just test
+
+# Run marx
+just run
+
+# Cut a release (updates versions, commits, tags, pushes)
+just release v0.1.1
+
+# Install package in editable mode
+just install
+
+# Run all checks (CI equivalent)
+just check
 ```
 
 ## Environment Variables
@@ -224,6 +247,8 @@ escape any literal braces as `{{` and `}}` when editing to avoid malformed promp
 marx [OPTIONS]
 ```
 
+Use `marx --help` for a quick reminder of prerequisites, environment variables, and example commands.
+
 ### Options
 
 - `--help` - Show help message and exit
@@ -283,7 +308,7 @@ marx --agents codex,gemini --dedupe-with claude
 ## How It Works
 
 ### 1. Setup & Validation
-- Checks for required dependencies (git, gh, jq, docker)
+- Checks for required dependencies (git, gh, docker)
 - Builds the configured Docker image (default: `marx:latest`) if not present
 - Validates `GITHUB_TOKEN` environment variable
 - Confirms current directory is a git repository
@@ -303,13 +328,11 @@ Determines repository slug (owner/name) using three methods in order:
   - Has at least one reviewer assigned
 - Handles both flat array and nested `nodes[]` API response formats
 
-### 4. PR Selection & Worktree Creation
+### 4. PR Selection & Checkout
 - If `--pr` is specified: validates PR exists and gets branch name
 - Otherwise: displays formatted PR list with colors and statistics and prompts for selection
 - Fetches the PR and gets commit SHA
-- Creates a git worktree at `../pr-{number}-{sanitized-branch}`
-- Handles worktree cleanup if it already exists
-- Symlinks `.claude` directory from original repo
+- Clones the repository inside the Docker container and checks out the PR head (or specific commit SHA)
 
 ### 5. Parallel AI Code Review
 - If `--agents` is specified: runs only the selected agents
@@ -321,8 +344,8 @@ Each AI model receives a detailed prompt instructing it to:
 - Output findings in structured JSON format
 
 Selected models run simultaneously in isolated Docker containers with:
-- Mounted worktree directory
-- User UID/GID for proper file permissions
+- Repository clone inside the container
+- Run artifacts directory mounted from the host
 - Config directories from home
 - GitHub token for API access
 
@@ -371,11 +394,12 @@ Each AI model produces JSON output with this structure:
 
 ### Output Files
 
-All files are saved in the worktree directory:
+All files are saved in the run artifacts directory (`runs/pr-{number}-{branch}/`):
 
 - `claude-review.json` - Claude's review
 - `codex-review.json` - Codex's review
 - `gemini-review.json` - Gemini's review
+- `dedup-review.json` - Deduplicated issues when multiple agents run
 - `merged-review.json` - Combined review from all models
 
 ## Example Workflow
@@ -388,15 +412,14 @@ marx
 # 1. Detect your repository
 # 2. Show available PRs
 # 3. Prompt you to select one
-# 4. Create a worktree
-# 5. Run AI reviews in parallel
-# 6. Display merged results
+# 4. Clone the PR inside Docker and run AI reviews in parallel
+# 5. Display merged results and write artifacts to runs/pr-<number>-<branch>/
 
-# Navigate to the worktree to work on issues
-cd ../pr-123-feature-branch
+# If you want a local checkout to apply fixes:
+gh pr checkout 123
 
-# When done, remove the worktree
-git worktree remove ../pr-123-feature-branch
+# Review artifacts are available at:
+ls runs/pr-123-<branch>/
 ```
 
 ## Docker Image
@@ -406,7 +429,7 @@ Marx uses a Docker image containing:
 - **GitHub Tools**: `gh` (GitHub CLI)
 - **Search & Navigation**: `rg` (ripgrep), `fd`, `tree`
 - **Code Refactoring**: `fastmod`, `ast-grep` (with `sg` alias)
-- **Development Tools**: git, jq, and other utilities
+- **Development Tools**: git and other utilities
 
 The image is built automatically on first run using the Dockerfile in this repository.
 
@@ -421,7 +444,7 @@ When supplying a custom image make sure it satisfies the baseline requirements e
 by the runner script:
 
 - A Linux base with `/bin/bash`, core utilities, and the ability to create users via `useradd`
-- `git`, `gh` (GitHub CLI), and `jq`
+- `git` and `gh` (GitHub CLI)
 - Search and navigation tools: `rg`, `fd`, `tree`
 - Code editing helpers: `fastmod`, `ast-grep` (available as `sg`)
 - The CLI tools for any agents you intend to run (`claude`, `codex`, `gemini`)
