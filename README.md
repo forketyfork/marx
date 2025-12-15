@@ -13,6 +13,7 @@ An interactive CLI tool for automated multi-model AI code review of GitHub Pull 
 uv tool install marx-ai
 
 # 2) Configure credentials
+# Create a GitHub token at https://github.com/settings/tokens with 'repo' scope
 cat > ~/.marx <<'EOF'
 GITHUB_TOKEN=ghp_your_token_here
 ANTHROPIC_API_KEY=your_claude_key
@@ -169,6 +170,10 @@ If using direnv (recommended), the `.env` file will be automatically loaded.
 
 ### Required
 - `GITHUB_TOKEN` - GitHub API token (required for container access to GitHub API)
+  - Create at https://github.com/settings/tokens
+  - Required scope: `repo` (Full control of private repositories)
+  - For public repositories only, the `public_repo` scope is sufficient
+  - The token is used to fetch PR metadata, read diffs, and post reviews
 
 ### API Keys (at least one required)
 The following API keys enable the respective AI models to function. You can provide one or more:
