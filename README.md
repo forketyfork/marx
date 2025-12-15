@@ -4,12 +4,12 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/language-Python-blue.svg)](https://www.python.org/)
 
-An interactive CLI tool for automated multi-model AI code review of GitHub Pull Requests. Marx fetches open PRs, creates a git worktree, and runs parallel code reviews using three AI models (Claude, Codex, and Gemini).
+An interactive CLI tool for automated multi-model AI code review of GitHub Pull Requests. Marx fetches open PRs and runs parallel code reviews inside Docker using three AI models (Claude, Codex, and Gemini) without modifying your local repository.
 
 ## Features
 
 - **Multi-Model AI Review**: Runs Claude, Codex, and Gemini in parallel for comprehensive code analysis
-- **Git Worktree Integration**: Creates isolated worktrees for safe PR review without affecting your main branch
+- **Containerized Checkout**: Clones the PR branch inside Docker so your local repo stays untouched
 - **Intelligent PR Filtering**: Automatically filters PRs where you're not the author or reviewer
 - **Docker Isolation**: All AI models run in containers with proper permissions
 - **Structured Output**: JSON-formatted results with priority-based issue categorization
@@ -308,13 +308,11 @@ Determines repository slug (owner/name) using three methods in order:
   - Has at least one reviewer assigned
 - Handles both flat array and nested `nodes[]` API response formats
 
-### 4. PR Selection & Worktree Creation
+### 4. PR Selection & Checkout
 - If `--pr` is specified: validates PR exists and gets branch name
 - Otherwise: displays formatted PR list with colors and statistics and prompts for selection
 - Fetches the PR and gets commit SHA
-- Creates a git worktree at `../pr-{number}-{sanitized-branch}`
-- Handles worktree cleanup if it already exists
-- Symlinks `.claude` directory from original repo
+- Clones the repository inside the Docker container and checks out the PR head (or specific commit SHA)
 
 ### 5. Parallel AI Code Review
 - If `--agents` is specified: runs only the selected agents
@@ -326,8 +324,8 @@ Each AI model receives a detailed prompt instructing it to:
 - Output findings in structured JSON format
 
 Selected models run simultaneously in isolated Docker containers with:
-- Mounted worktree directory
-- User UID/GID for proper file permissions
+- Repository clone inside the container
+- Run artifacts directory mounted from the host
 - Config directories from home
 - GitHub token for API access
 
@@ -376,11 +374,12 @@ Each AI model produces JSON output with this structure:
 
 ### Output Files
 
-All files are saved in the worktree directory:
+All files are saved in the run artifacts directory (`runs/pr-{number}-{branch}/`):
 
 - `claude-review.json` - Claude's review
 - `codex-review.json` - Codex's review
 - `gemini-review.json` - Gemini's review
+- `dedup-review.json` - Deduplicated issues when multiple agents run
 - `merged-review.json` - Combined review from all models
 
 ## Example Workflow
@@ -393,15 +392,14 @@ marx
 # 1. Detect your repository
 # 2. Show available PRs
 # 3. Prompt you to select one
-# 4. Create a worktree
-# 5. Run AI reviews in parallel
-# 6. Display merged results
+# 4. Clone the PR inside Docker and run AI reviews in parallel
+# 5. Display merged results and write artifacts to runs/pr-<number>-<branch>/
 
-# Navigate to the worktree to work on issues
-cd ../pr-123-feature-branch
+# If you want a local checkout to apply fixes:
+gh pr checkout 123
 
-# When done, remove the worktree
-git worktree remove ../pr-123-feature-branch
+# Review artifacts are available at:
+ls runs/pr-123-<branch>/
 ```
 
 ## Docker Image

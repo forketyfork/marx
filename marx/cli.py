@@ -245,8 +245,8 @@ def main(
     resume: bool,
     dedupe_with: str | None,
 ) -> None:
-    """Interactive script to fetch open GitHub PRs with reviewers, create a git worktree,
-    and run automated code review with multiple AI models (Claude, Codex, Gemini).
+    """Interactive script to fetch open GitHub PRs with reviewers and run automated code review
+    with multiple AI models (Claude, Codex, Gemini) inside Docker.
 
     \b
     Prerequisites:
