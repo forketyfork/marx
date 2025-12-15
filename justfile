@@ -183,6 +183,7 @@ root = pathlib.Path(__file__).resolve().parent
 updates = {
     root / "pyproject.toml": (r'(?m)^version\s*=\s*"[^"]+"', f'version = "{version}"'),
     root / "marx" / "__init__.py": (r'(?m)^__version__\s*=\s*"[^"]+"', f'__version__ = "{version}"'),
+    root / "flake.nix": (r'(?m)^\s*version\s*=\s*"[^"]+"\s*;', f'    version = "{version}";'),
 }
 
 for path, (pattern, replacement) in updates.items():
