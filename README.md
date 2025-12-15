@@ -205,9 +205,10 @@ to your `~/.marx` configuration file. The template supports the placeholders `{p
 
 ### Deduplication prompt
 
-When more than one agent is selected, Marx automatically invokes the first agent in the
-list for a follow-up deduplication pass. This step reads the individual review outputs, asks
-the agent to merge duplicate issues, and writes the consolidated results to
+When more than one agent is selected, Marx automatically invokes an agent for a follow-up
+deduplication pass. By default, the first agent in the `--agents` list is used, but you can
+override this with the `--dedupe-with` option. This step reads the individual review outputs,
+asks the agent to merge duplicate issues, and writes the consolidated results to
 `runs/<pr>/dedup-review.json`, ensuring the `agent` field lists all reporting agents as a
 comma-separated value. You can customize the deduplication instructions by providing a
 template at `MARX_DEDUP_PROMPT_PATH` or `DEDUP_PROMPT_PATH` (in `~/.marx`). The bundled
@@ -235,6 +236,8 @@ marx [OPTIONS]
 - `--repo <owner/repo>` - Repository in the format owner/repo (e.g., acmecorp/my-app)
   - Overrides automatic repository detection
 - `--resume` - Reuse artifacts from the previous run and skip AI execution
+- `--dedupe-with <agent>` - Agent to use for deduplication (claude, codex, gemini). Append `:<model>` to override the model.
+  - Default: first agent from `--agents`
 
 ### Examples
 
@@ -268,6 +271,12 @@ marx --pr 456 --agents "claude:sonnet,gemini:gemini-1.5-pro"
 
 # Resume from previous run without rerunning agents
 marx --resume --pr 123
+
+# Use Claude Opus for deduplication while running all agents
+marx --pr 123 --dedupe-with claude:opus
+
+# Run Codex and Gemini, use Claude for deduplication
+marx --agents codex,gemini --dedupe-with claude
 ```
 
 ## How It Works
