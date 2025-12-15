@@ -44,9 +44,6 @@ def check_dependencies(require_docker: bool = True) -> None:
     if not shutil.which("gh"):
         missing.append("gh (GitHub CLI)")
 
-    if not shutil.which("jq"):
-        missing.append("jq")
-
     if require_docker and not shutil.which("docker"):
         missing.append("docker")
 
@@ -252,7 +249,6 @@ def main(
     Prerequisites:
       - git
       - gh (GitHub CLI)
-      - jq
       - docker (not required with --resume)
 
     \b

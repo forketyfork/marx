@@ -22,7 +22,6 @@ The following tools must be installed:
 
 - `git` - Version control
 - `gh` - GitHub CLI (must be authenticated)
-- `jq` - JSON processing
 - `docker` - Container runtime
 
 ## Installation
@@ -105,7 +104,7 @@ direnv allow
 
 The Nix flake provides:
 - Python 3.12 with all dependencies
-- System tools (git, gh, jq, docker)
+- System tools (git, gh, docker)
 - Development tools (pytest, black, ruff, mypy)
 - Just command runner for common tasks
 
@@ -288,7 +287,7 @@ marx --agents codex,gemini --dedupe-with claude
 ## How It Works
 
 ### 1. Setup & Validation
-- Checks for required dependencies (git, gh, jq, docker)
+- Checks for required dependencies (git, gh, docker)
 - Builds the configured Docker image (default: `marx:latest`) if not present
 - Validates `GITHUB_TOKEN` environment variable
 - Confirms current directory is a git repository
@@ -409,7 +408,7 @@ Marx uses a Docker image containing:
 - **GitHub Tools**: `gh` (GitHub CLI)
 - **Search & Navigation**: `rg` (ripgrep), `fd`, `tree`
 - **Code Refactoring**: `fastmod`, `ast-grep` (with `sg` alias)
-- **Development Tools**: git, jq, and other utilities
+- **Development Tools**: git and other utilities
 
 The image is built automatically on first run using the Dockerfile in this repository.
 
@@ -424,7 +423,7 @@ When supplying a custom image make sure it satisfies the baseline requirements e
 by the runner script:
 
 - A Linux base with `/bin/bash`, core utilities, and the ability to create users via `useradd`
-- `git`, `gh` (GitHub CLI), and `jq`
+- `git` and `gh` (GitHub CLI)
 - Search and navigation tools: `rg`, `fd`, `tree`
 - Code editing helpers: `fastmod`, `ast-grep` (available as `sg`)
 - The CLI tools for any agents you intend to run (`claude`, `codex`, `gemini`)

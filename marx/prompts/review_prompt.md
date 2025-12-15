@@ -8,7 +8,7 @@ Available tools at your disposal:
 - tree: Display directory structure
 - fastmod: Fast code refactoring tool for large-scale changes
 - ast-grep (sg): AST-based code search and manipulation
-- git, jq, and standard Unix tools
+- git and standard Unix tools
 
 Your task:
 1. Use the gh command to gather all context about this PR:
