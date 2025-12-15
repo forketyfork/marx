@@ -77,7 +77,7 @@ If you simply want to use Marx and do not need the repository checked out locall
 published package directly from [PyPI](https://pypi.org/project/marx-ai/) using [uv](https://docs.astral.sh/uv/):
 
 ```bash
-uvx install marx-ai
+uv tool install marx-ai
 ```
 
 After installation the `marx` CLI will be on your `PATH` and you can run `marx --help` to verify
