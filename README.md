@@ -213,7 +213,8 @@ comma-separated value. You can customize the deduplication instructions by provi
 template at `MARX_DEDUP_PROMPT_PATH` or `DEDUP_PROMPT_PATH` (in `~/.marx`). The bundled
 template lives at `marx/prompts/dedup_prompt.md`. The Docker runner copies this file from
 `.marx/dedup-review.json` in the workspace back to the run directory, so keep custom output
-names aligned with that location.
+names aligned with that location. The template is rendered with Python string formatting, so
+escape any literal braces as `{{` and `}}` when editing to avoid malformed prompts.
 
 ## Usage
 
