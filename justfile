@@ -150,6 +150,7 @@ release VERSION:
     set -euo pipefail
 
     VERSION="{{VERSION}}"
+    RELEASE_BRANCH="release-${VERSION#v}"
 
     if [[ -z "${VERSION}" ]]; then
         echo "❌ Version is required (e.g., v0.1.1)"
@@ -171,6 +172,19 @@ release VERSION:
         exit 1
     fi
 
+    if git show-ref --verify --quiet "refs/heads/${RELEASE_BRANCH}"; then
+        echo "❌ Branch ${RELEASE_BRANCH} already exists locally."
+        exit 1
+    fi
+
+    if git ls-remote --exit-code --heads origin "${RELEASE_BRANCH}" >/dev/null 2>&1; then
+        echo "❌ Branch ${RELEASE_BRANCH} already exists on origin."
+        exit 1
+    fi
+
+    echo "🌿 Creating release branch ${RELEASE_BRANCH}..."
+    git checkout -b "${RELEASE_BRANCH}"
+
     echo "🔖 Updating versions to ${VERSION}..."
     python scripts/release.py "${VERSION}"
 
@@ -182,8 +196,8 @@ release VERSION:
     echo "🏷️  Tagging ${VERSION}..."
     git tag -a "${VERSION}" -m "Release ${VERSION}"
 
-    echo "🚀 Pushing commit and tag..."
-    git push origin HEAD
+    echo "🚀 Pushing branch and tag..."
+    git push origin "${RELEASE_BRANCH}"
     git push origin "${VERSION}"
 
     echo "🎉 Release ${VERSION} created and pushed."

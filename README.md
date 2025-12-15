@@ -145,7 +145,7 @@ just test
 just run
 
 # Cut a release (updates versions, commits, tags, pushes)
-just release v0.1.1
+just release v0.1.1   # creates and pushes branch release-0.1.1 and tag v0.1.1
 
 # Install package in editable mode
 just install
