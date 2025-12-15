@@ -36,8 +36,10 @@ PRIORITY_ORDER: Final[dict[str, int]] = {
 CONFIG_FILE_NAME: Final[str] = ".marx"
 DEFAULT_CONFIG_PATH: Final[Path] = Path.home() / CONFIG_FILE_NAME
 REVIEW_PROMPT_CONFIG_KEY: Final[str] = "REVIEW_PROMPT_PATH"
+DEDUP_PROMPT_CONFIG_KEY: Final[str] = "DEDUP_PROMPT_PATH"
 DEFAULT_PROMPT_RESOURCE_PACKAGE: Final[str] = "marx.prompts"
 DEFAULT_PROMPT_RESOURCE_NAME: Final[str] = "review_prompt.md"
+DEDUP_PROMPT_RESOURCE_NAME: Final[str] = "dedup_prompt.md"
 
 _CONFIG_CACHE: dict[Path, dict[str, str]] = {}
 
@@ -116,6 +118,28 @@ def load_review_prompt_template(config_path: Path | None = None) -> str:
 
     prompt_resource = resources.files(DEFAULT_PROMPT_RESOURCE_PACKAGE).joinpath(
         DEFAULT_PROMPT_RESOURCE_NAME
+    )
+    return prompt_resource.read_text(encoding="utf-8")
+
+
+def load_dedup_prompt_template(config_path: Path | None = None) -> str:
+    """Load the deduplication prompt template with override support."""
+
+    override = os.environ.get("MARX_DEDUP_PROMPT_PATH")
+    if not override:
+        override = get_config_value(DEDUP_PROMPT_CONFIG_KEY, config_path)
+
+    if override:
+        resolved_path = Path(override).expanduser()
+        try:
+            return resolved_path.read_text(encoding="utf-8")
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(
+                f"Deduplication prompt override not found at {resolved_path}"
+            ) from exc
+
+    prompt_resource = resources.files(DEFAULT_PROMPT_RESOURCE_PACKAGE).joinpath(
+        DEDUP_PROMPT_RESOURCE_NAME
     )
     return prompt_resource.read_text(encoding="utf-8")
 

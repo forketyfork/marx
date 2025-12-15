@@ -207,3 +207,59 @@ def test_merge_reviews(tmp_path: Path) -> None:
     assert len(merged.issues) == 2
     assert merged.issues[0].priority == "P0"
     assert merged.issues[1].priority == "P1"
+
+
+def test_merge_reviews_prefers_dedup(tmp_path: Path) -> None:
+    """Test that merge_reviews uses deduplicated issues when provided."""
+
+    claude_file = tmp_path / "claude.json"
+    codex_file = tmp_path / "codex.json"
+    gemini_file = tmp_path / "gemini.json"
+    dedup_file = tmp_path / "dedup.json"
+
+    for path in (claude_file, codex_file, gemini_file):
+        path.write_text(
+            json.dumps(
+                {
+                    "pr_summary": {"number": 42, "title": "Test PR", "description": ""},
+                    "issues": [
+                        {
+                            "agent": path.stem,
+                            "priority": "P1",
+                            "file": None,
+                            "line": None,
+                            "commit_id": "abc123",
+                            "category": "quality",
+                            "description": f"Issue from {path.stem}",
+                            "proposed_fix": "",
+                        }
+                    ],
+                }
+            )
+        )
+
+    dedup_file.write_text(
+        json.dumps(
+            {
+                "pr_summary": {"number": 42, "title": "Test PR", "description": ""},
+                "issues": [
+                    {
+                        "agent": "claude,codex",
+                        "priority": "P0",
+                        "file": "core.py",
+                        "line": 5,
+                        "commit_id": "abc123",
+                        "category": "bug",
+                        "description": "Deduplicated issue",
+                        "proposed_fix": "Fix it",
+                    }
+                ],
+            }
+        )
+    )
+
+    merged = merge_reviews(claude_file, codex_file, gemini_file, dedup_file)
+
+    assert len(merged.issues) == 1
+    assert merged.issues[0].priority == "P0"
+    assert merged.issues[0].agent == "claude,codex"
