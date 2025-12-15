@@ -94,6 +94,30 @@ def parse_agent_argument(agents_str: str) -> tuple[list[str], dict[str, str]]:
     return selected, model_overrides
 
 
+def parse_single_agent(agent_str: str) -> tuple[str, str | None]:
+    """Parse a single agent specification with optional model override.
+
+    Returns a tuple of (agent_name, model_override).
+    """
+    agent_part, has_model, model_part = agent_str.strip().partition(":")
+    agent = agent_part.lower()
+
+    if agent not in SUPPORTED_AGENTS:
+        raise click.BadParameter(
+            f"Invalid agent: {agent_part}. "
+            f"Valid agents are: {', '.join(sorted(SUPPORTED_AGENTS))}"
+        )
+
+    model_override = None
+    if has_model:
+        model = model_part.strip()
+        if not model:
+            raise click.BadParameter(f"Agent '{agent_part}' is missing a model name after ':'")
+        model_override = model
+
+    return agent, model_override
+
+
 def select_pr_interactive(github_client: GitHubClient) -> tuple[int, str]:
     """Interactively select a PR from the list."""
     print_header("🔍 Fetching open PRs with reviewers (excluding yours)...")
@@ -202,8 +226,24 @@ def setup_run_directory(
     is_flag=True,
     help="Reuse artifacts from the previous run and skip AI execution",
 )
+@click.option(
+    "--dedupe-with",
+    "dedupe_with",
+    type=str,
+    help=(
+        f"Agent to use for deduplication ({', '.join(SUPPORTED_AGENTS)}). "
+        "Append :model to override the default model (e.g., claude:opus). "
+        "Default: first agent from --agents"
+    ),
+)
 @click.version_option()
-def main(pr: int | None, agents: str | None, repo: str | None, resume: bool) -> None:
+def main(
+    pr: int | None,
+    agents: str | None,
+    repo: str | None,
+    resume: bool,
+    dedupe_with: str | None,
+) -> None:
     """Interactive script to fetch open GitHub PRs with reviewers, create a git worktree,
     and run automated code review with multiple AI models (Claude, Codex, Gemini).
 
@@ -225,6 +265,7 @@ def main(pr: int | None, agents: str | None, repo: str | None, resume: bool) -> 
       marx --repo acmecorp/my-app               # Review PRs in specific repository
       marx --pr 123 --repo acmecorp/my-app      # Review specific PR in specific repository
       marx --resume --pr 123                      # Reuse artifacts without rerunning agents
+      marx --dedupe-with claude:opus              # Use Claude with opus model for deduplication
     """
     try:
         load_environment_from_file()
@@ -241,6 +282,18 @@ def main(pr: int | None, agents: str | None, repo: str | None, resume: bool) -> 
                 print_warning("--agents option is ignored when --resume is used")
                 agents_to_run = list(SUPPORTED_AGENTS)
                 model_overrides = {}
+
+        dedupe_agent: str | None = None
+        dedupe_model_override: str | None = None
+        if dedupe_with:
+            if resume:
+                print_warning("--dedupe-with option is ignored when --resume is used")
+            else:
+                dedupe_agent, dedupe_model_override = parse_single_agent(dedupe_with)
+                print_info(
+                    f"Using {dedupe_agent} for deduplication"
+                    + (f" (model: {dedupe_model_override})" if dedupe_model_override else "")
+                )
 
         if model_overrides:
             for agent_name, model_name in model_overrides.items():
@@ -334,16 +387,20 @@ def main(pr: int | None, agents: str | None, repo: str | None, resume: bool) -> 
             )
 
             if len(agents_to_run) > 1:
-                print_header(f"🧹 Deduplicating issues with {agents_to_run[0].capitalize()}")
+                effective_dedupe_agent = dedupe_agent if dedupe_agent else agents_to_run[0]
+                effective_dedupe_model = (
+                    dedupe_model_override if dedupe_agent else model_overrides.get(agents_to_run[0])
+                )
+                print_header(f"🧹 Deduplicating issues with {effective_dedupe_agent.capitalize()}")
                 review_files = {agent: run_dir / f"{agent}-review.json" for agent in agents_to_run}
 
                 try:
                     docker_runner.run_deduplication_agent(
-                        agents_to_run[0],
+                        effective_dedupe_agent,
                         prompt_config,
                         run_dir,
                         review_files,
-                        model_overrides.get(agents_to_run[0]),
+                        effective_dedupe_model,
                     )
                     print_success("Deduplication pass completed")
                 except Exception as exc:
