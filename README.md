@@ -6,6 +6,27 @@
 
 An interactive CLI tool for automated multi-model AI code review of GitHub Pull Requests. Marx fetches open PRs and runs parallel code reviews inside Docker using three AI models (Claude, Codex, and Gemini) without modifying your local repository.
 
+## TL;DR: Install, Configure, Run
+
+```bash
+# 1) Install (no checkout needed)
+uv tool install marx-ai
+
+# 2) Configure credentials
+cat > ~/.marx <<'EOF'
+GITHUB_TOKEN=ghp_your_token_here
+ANTHROPIC_API_KEY=your_claude_key
+OPENAI_API_KEY=your_openai_key
+GEMINI_API_KEY=your_gemini_key
+# Optional: override repo detection
+# MARX_REPO=owner/repo
+EOF
+
+# 3) Run on a repo with all agents
+cd /path/to/your/git/repo
+marx --pr 123 --agents claude,codex,gemini
+```
+
 ## Features
 
 - **Multi-Model AI Review**: Runs Claude, Codex, and Gemini in parallel for comprehensive code analysis
