@@ -25,50 +25,6 @@ The following tools must be installed:
 - `jq` - JSON processing
 - `docker` - Container runtime
 
-## Quick Start with Nix (Recommended for Development)
-
-If you have [Nix](https://nixos.org/download.html) with flakes enabled:
-
-```bash
-# Clone the repository
-git clone https://github.com/forketyfork/marx.git
-cd marx
-
-# Enter the development environment
-nix develop
-
-# Or use direnv for automatic environment loading
-direnv allow
-```
-
-The Nix flake provides:
-- Python 3.12 with all dependencies
-- System tools (git, gh, jq, docker)
-- Development tools (pytest, black, ruff, mypy)
-- Just command runner for common tasks
-
-### Using Just Commands
-
-```bash
-# See all available commands
-just
-
-# Run linters
-just lint
-
-# Run tests
-just test
-
-# Run marx
-just run
-
-# Install package in editable mode
-just install
-
-# Run all checks (CI equivalent)
-just check
-```
-
 ## Installation
 
 ### Option 1: Install the published package from PyPI
@@ -129,6 +85,53 @@ uv pip install -e ".[dev]"
 After installation, run:
 ```bash
 marx
+```
+
+## Quick Start with Nix (Recommended for Development)
+
+If you have [Nix](https://nixos.org/download.html) with flakes enabled:
+
+```bash
+# Clone the repository
+git clone https://github.com/forketyfork/marx.git
+cd marx
+
+# Enter the development environment
+nix develop
+
+# Or use direnv for automatic environment loading
+direnv allow
+```
+
+The Nix flake provides:
+- Python 3.12 with all dependencies
+- System tools (git, gh, jq, docker)
+- Development tools (pytest, black, ruff, mypy)
+- Just command runner for common tasks
+
+### Using Just Commands
+
+```bash
+# See all available commands
+just
+
+# Run linters
+just lint
+
+# Run tests
+just test
+
+# Run marx
+just run
+
+# Cut a release (updates versions, commits, tags, pushes)
+just release v0.1.1
+
+# Install package in editable mode
+just install
+
+# Run all checks (CI equivalent)
+just check
 ```
 
 ## Environment Variables
@@ -223,6 +226,8 @@ escape any literal braces as `{{` and `}}` when editing to avoid malformed promp
 ```bash
 marx [OPTIONS]
 ```
+
+Use `marx --help` for a quick reminder of prerequisites, environment variables, and example commands.
 
 ### Options
 

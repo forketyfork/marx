@@ -8,6 +8,7 @@ from pathlib import Path
 
 import click
 
+from marx import __version__
 from marx.config import SUPPORTED_AGENTS, load_environment_from_file
 from marx.docker_runner import DockerRunner, ReviewPrompt
 from marx.exceptions import DependencyError, MarxError
@@ -236,7 +237,7 @@ def setup_run_directory(
         "Default: first agent from --agents"
     ),
 )
-@click.version_option()
+@click.version_option(version=__version__, prog_name="marx")
 def main(
     pr: int | None,
     agents: str | None,
@@ -247,25 +248,28 @@ def main(
     """Interactive script to fetch open GitHub PRs with reviewers, create a git worktree,
     and run automated code review with multiple AI models (Claude, Codex, Gemini).
 
+    \b
     Prerequisites:
       - git
       - gh (GitHub CLI)
       - jq
       - docker (not required with --resume)
 
+    \b
     Environment Variables:
-      GITHUB_TOKEN     GitHub API token (required for container access)
-      MARX_REPO   Optional owner/name override when auto-detect fails
+      GITHUB_TOKEN  GitHub API token (required for container access)
+      MARX_REPO     Optional owner/name override when auto-detect fails
 
+    \b
     Examples:
-      marx                                        # Interactive mode with all agents
-      marx --pr 123                               # Review PR #123 with all agents
-      marx --pr 123 --agents claude                # Review PR #123 with Claude only
-      marx --agents codex,gemini                   # Interactive mode with Codex and Gemini
-      marx --repo acmecorp/my-app               # Review PRs in specific repository
-      marx --pr 123 --repo acmecorp/my-app      # Review specific PR in specific repository
-      marx --resume --pr 123                      # Reuse artifacts without rerunning agents
-      marx --dedupe-with claude:opus              # Use Claude with opus model for deduplication
+      marx                                 # Interactive mode with all agents
+      marx --pr 123                        # Review PR #123 with all agents
+      marx --pr 123 --agents claude        # Review PR #123 with Claude only
+      marx --agents codex,gemini           # Interactive mode with Codex and Gemini
+      marx --repo acmecorp/my-app          # Review PRs in specific repository
+      marx --pr 123 --repo acmecorp/my-app # Review specific PR in specific repository
+      marx --resume --pr 123               # Reuse artifacts without rerunning agents
+      marx --dedupe-with claude:opus       # Use Claude with opus model for deduplication
     """
     try:
         load_environment_from_file()
