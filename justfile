@@ -172,28 +172,7 @@ release VERSION:
     fi
 
     echo "🔖 Updating versions to ${VERSION}..."
-    python - <<-'PY' "${VERSION}"
-	import pathlib
-	import re
-	import sys
-
-	version = sys.argv[1]
-	root = pathlib.Path(__file__).resolve().parent
-
-	updates = {
-	    root / "pyproject.toml": (r'(?m)^version\s*=\s*"[^"]+"', f'version = "{version}"'),
-	    root / "marx" / "__init__.py": (r'(?m)^__version__\s*=\s*"[^"]+"', f'__version__ = "{version}"'),
-	    root / "flake.nix": (r'(?m)^\s*version\s*=\s*"[^"]+"\s*;', f'    version = "{version}";'),
-	}
-
-	for path, (pattern, replacement) in updates.items():
-	    text = path.read_text()
-	    new_text, count = re.subn(pattern, replacement, text)
-	    if count == 0:
-	        sys.exit(f"Failed to update version in {path}")
-	    path.write_text(new_text)
-	    print(f"{path.name} -> {version}")
-	PY
+    python scripts/release.py "${VERSION}"
 
     git status --short
 
