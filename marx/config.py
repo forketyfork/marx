@@ -145,11 +145,20 @@ def load_dedup_prompt_template(config_path: Path | None = None) -> str:
 
 
 def load_environment_from_file(path: Path | None = None) -> dict[str, str]:
-    """Populate ``os.environ`` with values from the Marx config file."""
+    """Populate ``os.environ`` with values from the Marx config file.
+
+    Also sets ``GH_TOKEN`` from ``GITHUB_TOKEN`` if not already set,
+    since the ``gh`` CLI prefers ``GH_TOKEN`` for authentication.
+    """
 
     config = load_config_file(path)
     for key, value in config.items():
         os.environ.setdefault(key, value)
+
+    github_token = os.environ.get("GITHUB_TOKEN")
+    if github_token:
+        os.environ.setdefault("GH_TOKEN", github_token)
+
     return dict(config)
 
 

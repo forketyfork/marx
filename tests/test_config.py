@@ -28,6 +28,7 @@ OPENAI_API_KEY="open-key"
 
     monkeypatch.delenv("MARX_REPO", raising=False)
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     marx_config.clear_config_cache()
@@ -36,6 +37,7 @@ OPENAI_API_KEY="open-key"
     assert os.environ["MARX_REPO"] == "owner/repo"
     assert os.environ["GITHUB_TOKEN"] == "abc123"
     assert os.environ["OPENAI_API_KEY"] == "open-key"
+    assert os.environ["GH_TOKEN"] == "abc123"
 
 
 def test_load_environment_does_not_override_existing(monkeypatch, tmp_path) -> None:
@@ -43,11 +45,26 @@ def test_load_environment_does_not_override_existing(monkeypatch, tmp_path) -> N
 
     config_path = _write_config(tmp_path, "GITHUB_TOKEN=from-file\n")
     monkeypatch.setenv("GITHUB_TOKEN", "from-env")
+    monkeypatch.delenv("GH_TOKEN", raising=False)
 
     marx_config.clear_config_cache()
     marx_config.load_environment_from_file(config_path)
 
     assert os.environ["GITHUB_TOKEN"] == "from-env"
+    assert os.environ["GH_TOKEN"] == "from-env"
+
+
+def test_load_environment_does_not_override_existing_gh_token(monkeypatch, tmp_path) -> None:
+    """GH_TOKEN should not be overwritten if already set."""
+
+    config_path = _write_config(tmp_path, "GITHUB_TOKEN=from-file\n")
+    monkeypatch.setenv("GITHUB_TOKEN", "github-token")
+    monkeypatch.setenv("GH_TOKEN", "gh-token")
+
+    marx_config.clear_config_cache()
+    marx_config.load_environment_from_file(config_path)
+
+    assert os.environ["GH_TOKEN"] == "gh-token"
 
 
 def test_load_review_prompt_template_uses_packaged_default(monkeypatch) -> None:
