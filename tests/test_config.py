@@ -67,6 +67,29 @@ def test_load_environment_does_not_override_existing_gh_token(monkeypatch, tmp_p
     assert os.environ["GH_TOKEN"] == "gh-token"
 
 
+def test_load_environment_supports_export_prefix(monkeypatch, tmp_path) -> None:
+    """Config lines may be prefixed with export, similar to .env files."""
+
+    config_path = _write_config(
+        tmp_path,
+        """
+export GITHUB_TOKEN=from-export
+export OPENAI_API_KEY="exported-openai"
+""".strip(),
+    )
+
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    marx_config.clear_config_cache()
+    marx_config.load_environment_from_file(config_path)
+
+    assert os.environ["GITHUB_TOKEN"] == "from-export"
+    assert os.environ["GH_TOKEN"] == "from-export"
+    assert os.environ["OPENAI_API_KEY"] == "exported-openai"
+
+
 def test_load_review_prompt_template_uses_packaged_default(monkeypatch) -> None:
     """The bundled review prompt should be used when no overrides are provided."""
 
