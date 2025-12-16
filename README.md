@@ -108,6 +108,26 @@ After installation, run:
 marx
 ```
 
+### Authentication notes
+
+Marx uses the GitHub CLI (`gh`) under the hood. If you haven't run `gh auth login`, Marx will try to authenticate `gh` by supplying a token from your environment/config:
+
+- If `GH_TOKEN` is already set, it will be used as-is
+- Else, Marx will look for `MARX_GITHUB_TOKEN` or `GITHUB_TOKEN` (env or `~/.marx`) and pass it to `gh` as `GH_TOKEN`
+
+Recommended options:
+
+- Either run `gh auth login` once and rely on your `gh` keychain, or
+- Put `GITHUB_TOKEN=...` (or `MARX_GITHUB_TOKEN=...`) into `~/.marx` as shown above, or export it in your shell environment.
+
+If you see an error like:
+
+```
+Repository 'owner/repo' not found or not accessible
+```
+
+ensure that your token has at least the `repo` scope and that the repository exists and your account has access to it. For GitHub Enterprise, also verify your `gh` host configuration.
+
 ## Quick Start with Nix (Recommended for Development)
 
 If you have [Nix](https://nixos.org/download.html) with flakes enabled:
