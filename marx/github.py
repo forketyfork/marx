@@ -1,6 +1,7 @@
 """GitHub API client for PR operations."""
 
 import json
+import os
 import re
 import subprocess
 from typing import Any
@@ -26,12 +27,25 @@ class GitHubClient:
         """Run a gh CLI command and return stdout and stderr."""
         cmd = ["gh"] + args
         try:
+            # Ensure GitHub authentication for gh CLI: prefer existing GH_TOKEN, otherwise
+            # fall back to MARX_GITHUB_TOKEN / GITHUB_TOKEN from env or ~/.marx config.
+            env = os.environ.copy()
+            if not env.get("GH_TOKEN"):
+                token = (
+                    env.get("MARX_GITHUB_TOKEN")
+                    or env.get("GITHUB_TOKEN")
+                    or get_config_value("MARX_GITHUB_TOKEN")
+                    or get_config_value("GITHUB_TOKEN")
+                )
+                if token:
+                    env["GH_TOKEN"] = token
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 check=check,
                 input=input_data,
+                env=env,
             )
             return result.stdout.strip(), result.stderr.strip()
         except subprocess.CalledProcessError as e:
