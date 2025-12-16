@@ -89,7 +89,7 @@ EOF
         # Package definition for marx
         packages.default = pkgs.python312Packages.buildPythonApplication {
           pname = "marx";
-    version = "v0.1.3";
+    version = "v0.1.4";
 
           src = ./.;
 
