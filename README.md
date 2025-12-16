@@ -119,6 +119,7 @@ Recommended options:
 
 - Either run `gh auth login` once and rely on your `gh` keychain, or
 - Put `GITHUB_TOKEN=...` (or `MARX_GITHUB_TOKEN=...`) into `~/.marx` as shown above, or export it in your shell environment.
+- Use a **classic** personal access token with `repo` (or `public_repo` for public-only) **and `read:org`** scopes. Fine-grained tokens are not supported.
 
 If you see an error like:
 
@@ -191,8 +192,9 @@ If using direnv (recommended), the `.env` file will be automatically loaded.
 ### Required
 - `GITHUB_TOKEN` - GitHub API token (required for container access to GitHub API)
   - Create at https://github.com/settings/tokens
-  - Required scope: `repo` (Full control of private repositories)
-  - For public repositories only, the `public_repo` scope is sufficient
+  - Use a **classic** PAT (fine-grained tokens are not supported)
+  - Required scopes: `repo` (full control of private repositories) **and `read:org`**
+  - For public repositories only, `public_repo` + `read:org` is sufficient
   - The token is used to fetch PR metadata, read diffs, and post reviews
 
 ### API Keys (at least one required)
@@ -229,7 +231,7 @@ Marx can use AI model configuration directories from your home directory:
 These directories are mounted read-only into the Docker container during execution. This method is useful for development when you've already authenticated via the respective CLI tools.
 
 ### Global Config File (`~/.marx`)
-Marx also looks for a configuration file at `~/.marx`. Any values defined here act as defaults and are only applied when the corresponding environment variable is unset. The file uses a simple `KEY=value` format and supports comments starting with `#` on their own line.
+Marx also looks for a configuration file at `~/.marx`. Any values defined here act as defaults and are only applied when the corresponding environment variable is unset. The file uses a simple `KEY=value` format (an optional leading `export` is allowed, e.g., `export GITHUB_TOKEN=...`) and supports comments starting with `#` on their own line.
 
 Example:
 

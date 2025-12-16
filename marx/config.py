@@ -51,6 +51,9 @@ def _parse_config_line(line: str) -> tuple[str, str] | None:
     if not stripped or stripped.startswith("#"):
         return None
 
+    if stripped.startswith("export"):
+        stripped = stripped[len("export") :].strip()
+
     if "=" not in stripped:
         return None
 
