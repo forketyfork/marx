@@ -191,6 +191,7 @@ Optional:
 ## Important Behaviors
 
 - Always update README.md when making code changes (per project instructions)
+- Do not add routine bug-fix notes or small UI tweaks to README; keep it focused on user-facing features and usage
 - The tool never modifies the repository being reviewed (read-only operations)
 - Worktrees are no longer used; instead, repositories are cloned in containers
 - Agent failures produce empty reviews with error descriptions (non-fatal)

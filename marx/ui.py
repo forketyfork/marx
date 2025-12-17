@@ -103,14 +103,14 @@ def display_issue(issue: dict, priority_emoji: str) -> None:
     agent = issue.get("agent", "unknown").upper()
     file_path = issue.get("file", "unknown")
     line = issue.get("line", "?")
-    category = issue.get("category", "unspecified")
+    category = issue.get("category", "unspecified").strip() or "unspecified"
     description = issue.get("description", "No description")
     proposed_fix = issue.get("proposed_fix", "No fix suggested")
 
     panel_content = (
         f"🤖 Agent: [bold magenta]{agent}[/bold magenta]\n"
         f"📁 [bold cyan]{file_path}:{line}[/bold cyan]\n"
-        f"🏷️ [bold]{category}[/bold]\n\n"
+        f"🏷 [bold]{category}[/bold]\n\n"
         f"[bold]Issue:[/bold] {description}\n\n"
         f"[bold green]💡 Fix:[/bold green] {proposed_fix}"
     )
