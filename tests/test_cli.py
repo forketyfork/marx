@@ -1,8 +1,8 @@
 """Tests for CLI helper functions."""
 
-import click
 from pathlib import Path
 
+import click
 import pytest
 
 from marx.cli import build_json_output, parse_agent_argument, parse_single_agent

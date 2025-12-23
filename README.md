@@ -611,8 +611,10 @@ just info          # Show environment info
 The Python codebase includes a comprehensive test suite. To run tests manually:
 
 ```bash
-# Install development dependencies
+# Install development dependencies (includes pytest-cov for coverage)
 uv pip install -e ".[dev]"
+# or
+pip install -r requirements-dev.txt
 
 # Run tests with coverage
 pytest
