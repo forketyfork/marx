@@ -26,9 +26,7 @@ def main() -> None:
 
     updates = {
         root / "pyproject.toml": (r'^version\s*=\s*".*"$', f'version = "{version}"'),
-        root
-        / "marx"
-        / "__init__.py": (
+        root / "marx" / "__init__.py": (
             r'^__version__\s*=\s*".*"$',
             f'__version__ = "{version}"',
         ),
