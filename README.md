@@ -108,6 +108,45 @@ After installation, run:
 marx
 ```
 
+### Structured JSON output
+
+Use `--json-output` to print the merged review in a machine-readable format instead of the
+default rich terminal view:
+
+```bash
+marx --pr 123 --json-output
+```
+
+The output includes PR context, issue counts, all issues, and pointers to the saved artifacts:
+
+```json
+{
+  "pr": {"number": 123, "title": "Add new feature"},
+  "descriptions": [{"agent": "claude", "description": "Short summary"}],
+  "counts": {"total": 5, "p0": 1, "p1": 3, "p2": 1},
+  "issues": [
+    {
+      "agent": "claude",
+      "priority": "P1",
+      "file": "src/app.py",
+      "line": 42,
+      "commit_id": "abcd1234",
+      "category": "bug",
+      "description": "Potential issue",
+      "proposed_fix": "Suggested change"
+    }
+  ],
+  "artifacts": {
+    "claude_review": "runs/pr-123-main/claude-review.json",
+    "codex_review": "runs/pr-123-main/codex-review.json",
+    "gemini_review": "runs/pr-123-main/gemini-review.json",
+    "dedup_review": null,
+    "merged_review": "runs/pr-123-main/merged-review.json"
+  },
+  "run_directory": "runs/pr-123-main"
+}
+```
+
 ### Authentication notes
 
 Marx uses the GitHub CLI (`gh`) under the hood. If you haven't run `gh auth login`, Marx will try to authenticate `gh` by supplying a token from your environment/config:
@@ -572,8 +611,10 @@ just info          # Show environment info
 The Python codebase includes a comprehensive test suite. To run tests manually:
 
 ```bash
-# Install development dependencies
+# Install development dependencies (includes pytest-cov for coverage)
 uv pip install -e ".[dev]"
+# or
+pip install -r requirements-dev.txt
 
 # Run tests with coverage
 pytest

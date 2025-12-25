@@ -1,10 +1,12 @@
 """Command-line interface for Marx."""
 
+import json
 import os
 import re
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -14,6 +16,7 @@ from marx.docker_runner import DockerRunner, ReviewPrompt
 from marx.exceptions import DependencyError, MarxError
 from marx.github import GitHubClient
 from marx.review import (
+    MergedReview,
     count_issues_by_priority,
     merge_reviews,
     post_github_review,
@@ -114,6 +117,38 @@ def parse_single_agent(agent_str: str) -> tuple[str, str | None]:
         model_override = model
 
     return agent, model_override
+
+
+def build_json_output(
+    merged_review: MergedReview,
+    p0_count: int,
+    p1_count: int,
+    p2_count: int,
+    artifact_paths: dict[str, Path | None],
+    run_dir: Path,
+) -> dict[str, Any]:
+    """Create a structured JSON payload for machine-readable output."""
+
+    artifacts: dict[str, str | None] = {
+        name: str(path) if path else None for name, path in artifact_paths.items()
+    }
+
+    return {
+        "pr": {
+            "number": merged_review.pr_summary.number,
+            "title": merged_review.pr_summary.title,
+        },
+        "descriptions": merged_review.descriptions,
+        "counts": {
+            "total": len(merged_review.issues),
+            "p0": p0_count,
+            "p1": p1_count,
+            "p2": p2_count,
+        },
+        "issues": [issue.model_dump() for issue in merged_review.issues],
+        "artifacts": artifacts,
+        "run_directory": str(run_dir),
+    }
 
 
 def select_pr_interactive(github_client: GitHubClient) -> tuple[int, str]:
@@ -234,6 +269,11 @@ def setup_run_directory(
         "Default: first agent from --agents"
     ),
 )
+@click.option(
+    "--json-output",
+    is_flag=True,
+    help="Print the merged review as structured JSON instead of formatted terminal output",
+)
 @click.version_option(version=__version__, prog_name="marx")
 def main(
     pr: int | None,
@@ -241,6 +281,7 @@ def main(
     repo: str | None,
     resume: bool,
     dedupe_with: str | None,
+    json_output: bool,
 ) -> None:
     """Interactive script to fetch open GitHub PRs with reviewers and run automated code review
     with multiple AI models (Claude, Codex, Gemini) inside Docker.
@@ -362,8 +403,6 @@ def main(
                         },
                         "issues": [],
                     }
-                    import json
-
                     with open(output_file, "w") as f:
                         json.dump(placeholder, f)
         else:
@@ -417,8 +456,6 @@ def main(
                         },
                         "issues": [],
                     }
-                    import json
-
                     with open(output_file, "w") as f:
                         json.dump(placeholder, f)
 
@@ -431,6 +468,25 @@ def main(
 
         p0_count, p1_count, p2_count = count_issues_by_priority(merged_review.issues)
         total_issues = len(merged_review.issues)
+
+        if json_output:
+            json_payload = build_json_output(
+                merged_review,
+                p0_count,
+                p1_count,
+                p2_count,
+                {
+                    "claude_review": claude_output,
+                    "codex_review": codex_output,
+                    "gemini_review": gemini_output,
+                    "dedup_review": dedup_output if dedup_output.exists() else None,
+                    "merged_review": merged_output,
+                },
+                run_dir,
+            )
+            json.dump(json_payload, sys.stdout, indent=2)
+            sys.stdout.write("\n")
+            return
 
         display_review_summary(
             merged_review.pr_summary.title,

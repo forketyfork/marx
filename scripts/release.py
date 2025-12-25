@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import pathlib
 import re
-import sys
 
 
 def update_file(path: pathlib.Path, pattern: str, replacement: str) -> None:
@@ -31,7 +30,8 @@ def main() -> None:
             r'^__version__\s*=\s*".*"$',
             f'__version__ = "{version}"',
         ),
-        root / "flake.nix": (
+        root
+        / "flake.nix": (
             r'^\s*version\s*=\s*".*"\s*;',
             f'    version = "{version}";',
         ),
@@ -44,7 +44,7 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except SystemExit as exc:  # bubble up explicit error text
+    except SystemExit:  # bubble up explicit error text
         raise
     except Exception as exc:
         raise SystemExit(str(exc)) from exc
