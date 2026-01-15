@@ -102,12 +102,12 @@ clean:
 # Build Docker image
 docker-build:
     @echo "🐳 Building Docker image..."
-    docker build -t marx:latest .
+    docker build -t ghcr.io/forketyfork/marx:latest .
 
 # Run Docker image verification
 docker-verify:
     @echo "🐳 Verifying Docker image..."
-    docker run --rm marx:latest /bin/bash -c "which claude && which codex && which gemini && echo 'All CLI tools found!'"
+    docker run --rm ghcr.io/forketyfork/marx:latest /bin/bash -c "which claude && which codex && which gemini && echo 'All CLI tools found!'"
 
 # Run all checks (lint, type-check, test)
 check: lint type-check test

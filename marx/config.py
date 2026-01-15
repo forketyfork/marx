@@ -7,7 +7,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Final
 
-DEFAULT_DOCKER_IMAGE: Final[str] = "marx:latest"
+DEFAULT_DOCKER_IMAGE: Final[str] = "ghcr.io/forketyfork/marx:latest"
 DOCKER_IMAGE_ENV_VAR: Final[str] = "MARX_DOCKER_IMAGE"
 DOCKER_IMAGE_CONFIG_KEY: Final[str] = "DOCKER_IMAGE"
 CONTAINER_RUNNER_DIR: Final[str] = "/runner"
@@ -177,7 +177,7 @@ def get_docker_image(config_path: Path | None = None) -> str:
     Precedence order:
     1. ``MARX_DOCKER_IMAGE`` environment variable
     2. ``DOCKER_IMAGE`` entry in the Marx config file
-    3. Bundled default image (``marx:latest``)
+    3. Published default image (``ghcr.io/forketyfork/marx:latest``)
     """
 
     env_override = os.environ.get(DOCKER_IMAGE_ENV_VAR)
