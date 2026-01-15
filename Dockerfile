@@ -1,5 +1,7 @@
 FROM ubuntu:24.04
 
+ARG AST_GREP_VERSION=0.40.5
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -39,8 +41,7 @@ RUN npm install -g @anthropic-ai/claude-code@latest \
 
 # Download pre-built ast-grep binary
 ARG TARGETARCH
-RUN AST_GREP_VERSION="0.40.5" \
-    && case "${TARGETARCH}" in \
+RUN case "${TARGETARCH}" in \
         amd64) AST_GREP_ARCH="x86_64" ;; \
         arm64) AST_GREP_ARCH="aarch64" ;; \
         *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
