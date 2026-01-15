@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     git \
     jq \
     curl \
+    unzip \
     ca-certificates \
     gnupg \
     tree \
@@ -31,12 +32,25 @@ RUN npm install -g @anthropic-ai/claude-code@latest \
     && npm install -g @openai/codex@latest \
     && npm install -g @google/gemini-cli@latest
 
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+# Download pre-built ast-grep binary
+ARG TARGETARCH
+RUN AST_GREP_VERSION="0.40.5" \
+    && case "${TARGETARCH}" in \
+        amd64) AST_GREP_ARCH="x86_64" ;; \
+        arm64) AST_GREP_ARCH="aarch64" ;; \
+        *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
+    esac \
+    && curl -fsSL "https://github.com/ast-grep/ast-grep/releases/download/${AST_GREP_VERSION}/app-${AST_GREP_ARCH}-unknown-linux-gnu.zip" -o /tmp/ast-grep.zip \
+    && unzip -q /tmp/ast-grep.zip -d /tmp/ast-grep \
+    && mv /tmp/ast-grep/sg /usr/local/bin/sg \
+    && ln -s /usr/local/bin/sg /usr/local/bin/ast-grep \
+    && rm -rf /tmp/ast-grep.zip /tmp/ast-grep
+
+# Compile fastmod from source (no pre-built binaries available)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal \
     && . "$HOME/.cargo/env" \
-    && cargo install fastmod ast-grep \
+    && cargo install fastmod \
     && mv "$HOME/.cargo/bin/fastmod" /usr/local/bin/fastmod \
-    && mv "$HOME/.cargo/bin/ast-grep" /usr/local/bin/ast-grep \
-    && mv "$HOME/.cargo/bin/sg" /usr/local/bin/sg \
     && rm -rf "$HOME/.cargo" "$HOME/.rustup"
 
 WORKDIR /workspace
