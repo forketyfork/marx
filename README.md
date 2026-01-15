@@ -375,7 +375,7 @@ marx --agents codex,gemini --dedupe-with claude
 
 ### 1. Setup & Validation
 - Checks for required dependencies (git, gh, docker)
-- Builds the configured Docker image (default: `marx:latest`) if not present
+- Pulls the configured Docker image (default: `ghcr.io/forketyfork/marx:latest`) if not present
 - Validates `GITHUB_TOKEN` environment variable
 - Confirms current directory is a git repository
 
@@ -497,14 +497,15 @@ Marx uses a Docker image containing:
 - **Code Refactoring**: `fastmod`, `ast-grep` (with `sg` alias)
 - **Development Tools**: git and other utilities
 
-The image is built automatically on first run using the Dockerfile in this repository.
+The default image is `ghcr.io/forketyfork/marx:latest`. It is published to GHCR and
+pulled automatically on first run.
 
 ### Customizing the Docker image
 
 You can run Marx with a different Docker image by setting the `MARX_DOCKER_IMAGE`
 environment variable or by adding `DOCKER_IMAGE=your/image:tag` to your `~/.marx`
 configuration file. The environment variable takes precedence over the config file,
-and both fall back to the bundled `marx:latest` image when unspecified.
+and both fall back to the bundled `ghcr.io/forketyfork/marx:latest` image when unspecified.
 
 When supplying a custom image make sure it satisfies the baseline requirements expected
 by the runner script:
@@ -517,6 +518,10 @@ by the runner script:
 
 Images missing these tools will fail at runtime, so verify your custom build before
 invoking Marx.
+
+If you prefer a local build, build the image yourself (for example,
+`docker build -t marx:latest .`) and set `MARX_DOCKER_IMAGE=marx:latest` so Marx
+uses your local tag.
 
 ## Error Handling
 
