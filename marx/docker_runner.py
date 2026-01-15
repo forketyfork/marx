@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import docker  # type: ignore[import-untyped]
-from docker.errors import BuildError, ContainerError, ImageNotFound  # type: ignore[import-untyped]
+from docker.errors import ContainerError, ImageNotFound  # type: ignore[import-untyped]
 from pydantic import BaseModel
 
 from marx.config import (
@@ -57,20 +57,6 @@ class DockerRunner:
             print_info(f"Docker image {self.docker_image} already exists")
         except ImageNotFound:
             self._pull_image()
-
-    def _build_image(self) -> None:
-        """Build the Docker image."""
-        print_info(f"Building Docker image {self.docker_image}...")
-        try:
-            self.client.images.build(
-                path=str(self.dockerfile_dir),
-                tag=self.docker_image,
-                rm=True,
-            )
-            print_success("Docker image built successfully")
-        except BuildError as e:
-            logs = "\n".join(line.get("stream", "") for line in e.build_log if "stream" in line)
-            raise DockerError(f"Failed to build Docker image:\n{logs}") from e
 
     def _pull_image(self) -> None:
         """Pull a Docker image."""
