@@ -36,6 +36,7 @@ marx --pr 123 --agents claude,codex,gemini
 - **Docker Isolation**: All AI models run in containers with proper permissions
 - **Structured Output**: JSON-formatted results with priority-based issue categorization
 - **Robust Error Handling**: Graceful fallbacks and comprehensive validation
+- **Preflight PR Context**: Captures PR details, diff, changed files, and review comments up front to keep agents aligned on the exact PR state
 - **User-Friendly Interface**: Colored output with clear progress indicators
 
 ## Prerequisites

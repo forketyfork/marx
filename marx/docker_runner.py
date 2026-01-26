@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -197,7 +198,12 @@ class DockerRunner:
             if output_file.exists():
                 try:
                     with open(output_file) as f:
-                        json.load(f)
+                        review_data = json.load(f)
+                    sanitized_data, was_modified = self._sanitize_review_data(review_data)
+                    if was_modified:
+                        with open(output_file, "w") as f:
+                            json.dump(sanitized_data, f, indent=2)
+                    self._prune_stderr_noise(stderr_file)
                     print_success(f"{agent.capitalize()} analysis completed")
                 except json.JSONDecodeError:
                     print_warning(
@@ -344,6 +350,71 @@ class DockerRunner:
                 content = content.replace(value, "[REDACTED]")
 
         return content
+
+    @staticmethod
+    def _strip_markdown_fences(text: str) -> tuple[str, bool]:
+        """Remove Markdown code fences from a string."""
+        if "```" not in text:
+            return text, False
+
+        fence_pattern = re.compile(r"```(?:[^\n]*)\n(.*?)```", re.DOTALL)
+        cleaned = fence_pattern.sub(lambda match: match.group(1).strip("\n"), text)
+        cleaned = cleaned.replace("```", "")
+
+        return cleaned, cleaned != text
+
+    @classmethod
+    def _sanitize_review_data(cls, data: object) -> tuple[object, bool]:
+        """Strip Markdown fences from all string values in a review payload."""
+        if isinstance(data, dict):
+            updated: dict[str, object] = {}
+            changed = False
+            for key, value in data.items():
+                new_value, was_modified = cls._sanitize_review_data(value)
+                updated[key] = new_value
+                changed |= was_modified
+            return updated, changed
+
+        if isinstance(data, list):
+            updated_list: list[object] = []
+            changed = False
+            for item in data:
+                new_item, was_modified = cls._sanitize_review_data(item)
+                updated_list.append(new_item)
+                changed |= was_modified
+            return updated_list, changed
+
+        if isinstance(data, str):
+            return cls._strip_markdown_fences(data)
+
+        return data, False
+
+    @staticmethod
+    def _prune_stderr_noise(stderr_file: Path) -> None:
+        """Remove known non-actionable MCP startup noise from stderr logs."""
+        if not stderr_file.exists():
+            return
+
+        lines = stderr_file.read_text().splitlines()
+        if not lines:
+            return
+
+        def is_noise(line: str) -> bool:
+            return (
+                line.startswith("mcp:")
+                or "rmcp::" in line
+                or "MCP startup" in line
+                or "MCP client" in line
+            )
+
+        filtered = [line for line in lines if not is_noise(line)]
+        if filtered == lines:
+            return
+
+        if filtered:
+            stderr_file.write_text("\n".join(filtered) + "\n")
+        else:
+            stderr_file.unlink(missing_ok=True)
 
     def _generate_prompt(self, config: ReviewPrompt, agent: str) -> str:
         """Generate the review prompt for an agent."""
@@ -513,6 +584,77 @@ if ! clone_repository "$REPO_SLUG" "$PR_NUMBER" "$COMMIT_SHA"; then
 fi
 
 cd /workspace/repo
+
+write_preflight_context() {
+    local preflight_dir="/workspace/repo/.marx"
+    local pr_view="${preflight_dir}/pr-view.json"
+    local pr_comments="${preflight_dir}/pr-comments.json"
+    local pr_diff="${preflight_dir}/pr-diff.patch"
+    local changed_files="${preflight_dir}/changed-files.txt"
+    local instructions="${preflight_dir}/instructions.txt"
+    local preflight="${preflight_dir}/preflight.md"
+
+    mkdir -p "$preflight_dir"
+    : > "$instructions"
+
+    for file in AGENTS.md CLAUDE.md CODEX.md GEMINI.md GPT.md; do
+        if [[ -f "$file" ]]; then
+            echo "$file" >> "$instructions"
+        fi
+    done
+
+    local view_status="skipped"
+    local diff_status="skipped"
+    local files_status="skipped"
+    local comments_status="skipped"
+
+    if [[ -n "$PR_NUMBER" ]]; then
+        if gh pr view "$PR_NUMBER" --json \
+            title,body,author,number,baseRefName,headRefName > "$pr_view"; then
+            view_status="ok"
+        else
+            view_status="failed"
+            echo "{}" > "$pr_view"
+        fi
+
+        if gh pr diff "$PR_NUMBER" > "$pr_diff"; then
+            diff_status="ok"
+        else
+            diff_status="failed"
+            : > "$pr_diff"
+        fi
+
+        if gh pr diff "$PR_NUMBER" --name-only > "$changed_files"; then
+            files_status="ok"
+        else
+            files_status="failed"
+            : > "$changed_files"
+        fi
+
+        if gh api "repos/${REPO_SLUG}/pulls/${PR_NUMBER}/comments" --paginate > "$pr_comments"; then
+            comments_status="ok"
+        else
+            comments_status="failed"
+            echo "[]" > "$pr_comments"
+        fi
+    fi
+
+    cat > "$preflight" <<EOF
+# PR preflight context
+
+These files are generated by the runner before the agent starts. Read them first.
+
+- pr_view: ${pr_view} (status: ${view_status})
+- pr_diff: ${pr_diff} (status: ${diff_status})
+- changed_files: ${changed_files} (status: ${files_status})
+- pr_comments: ${pr_comments} (status: ${comments_status})
+- instruction_files: ${instructions}
+
+Base/head refs are available in ${pr_view}.
+EOF
+}
+
+write_preflight_context
 
 case "$MODEL_CMD" in
     claude)
