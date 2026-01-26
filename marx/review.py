@@ -48,14 +48,266 @@ class MergedReview(BaseModel):
     issues: list[Issue]
 
 
-def load_review(file_path: Path) -> AgentReview:
-    """Load a review from a JSON file."""
+def parse_review_text(text: str, source: Path | None = None) -> AgentReview:
+    """Parse a structured review text file into an AgentReview."""
+    lines = text.splitlines()
+    header: dict[str, str] = {}
+    issues: list[dict[str, str]] = []
+
+    header_keys = {
+        "pr_number": "number",
+        "pr_title": "title",
+        "pr_description": "description",
+    }
+    issue_keys = {
+        "agent": "agent",
+        "priority": "priority",
+        "path": "file",
+        "file": "file",
+        "line": "line",
+        "commit_id": "commit_id",
+        "category": "category",
+        "description": "description",
+        "proposed_fix": "proposed_fix",
+    }
+    multiline_keys = {"description", "proposed_fix"}
+
+    section = "header"
+    current_issue: dict[str, str] | None = None
+    current_key: str | None = None
+    current_lines: list[str] = []
+
+    def finalize_multiline(target: dict[str, str]) -> None:
+        nonlocal current_key, current_lines
+        if current_key is None:
+            return
+        target[current_key] = "\n".join(current_lines).rstrip()
+        current_key = None
+        current_lines = []
+
+    def start_issue() -> None:
+        nonlocal section, current_issue
+        if current_issue:
+            issues.append(current_issue)
+        current_issue = {}
+        section = "issue"
+
+    def strip_quotes(value: str) -> str:
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            return value[1:-1]
+        return value
+
+    for raw_line in lines:
+        line = raw_line.rstrip("\n")
+        stripped = line.strip()
+
+        if stripped == "--- ISSUE ---":
+            if section == "issue" and current_issue is not None:
+                finalize_multiline(current_issue)
+            section = "issue"
+            start_issue()
+            continue
+
+        if stripped == "":
+            if current_key is not None:
+                current_lines.append("")
+            continue
+
+        if current_key is not None and line.startswith("  "):
+            current_lines.append(line[2:])
+            continue
+
+        if section == "issue" and current_issue is not None:
+            finalize_multiline(current_issue)
+        else:
+            finalize_multiline(header)
+
+        if ":" not in line:
+            continue
+
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = strip_quotes(value.lstrip())
+
+        if section == "header":
+            normalized_key = key.lower()
+            if normalized_key not in issue_keys:
+                dest_key = header_keys.get(normalized_key)
+                if not dest_key:
+                    continue
+                if dest_key == "description" and value == "":
+                    current_key = dest_key
+                    current_lines = []
+                else:
+                    header[dest_key] = value
+                continue
+            start_issue()
+            section = "issue"
+
+        if current_issue is None:
+            start_issue()
+        if current_issue is None:
+            raise ReviewError("Failed to start issue block parsing.")
+
+        normalized_key = key.lower()
+        dest_key = issue_keys.get(normalized_key)
+        if not dest_key:
+            continue
+
+        if dest_key in multiline_keys and value == "":
+            current_key = dest_key
+            current_lines = []
+            continue
+
+        current_issue[dest_key] = value
+
+    if section == "issue" and current_issue is not None:
+        finalize_multiline(current_issue)
+        if current_issue:
+            issues.append(current_issue)
+    else:
+        finalize_multiline(header)
+
+    missing_header = [key for key in ("number", "title") if key not in header]
+    if missing_header:
+        origin = f" in {source}" if source else ""
+        raise ReviewError(f"Missing header field(s){origin}: {', '.join(missing_header)}")
+
     try:
-        with open(file_path) as f:
-            data = json.load(f)
-        return AgentReview(**data)
-    except (json.JSONDecodeError, FileNotFoundError) as e:
+        pr_number = int(header["number"])
+    except ValueError as exc:
+        raise ReviewError(f"Invalid PR_NUMBER value: {header['number']}") from exc
+
+    pr_description = header.get("description") or None
+
+    default_agent = None
+    if source is not None:
+        stem = source.stem.split("-", 1)[0]
+        if stem in {"claude", "codex", "gemini"}:
+            default_agent = stem
+
+    parsed_issues: list[Issue] = []
+    for issue in issues:
+        agent = issue.get("agent") or default_agent
+        required_keys = ["priority", "commit_id", "category", "description", "proposed_fix"]
+        missing_issue = [key for key in required_keys if key not in issue]
+        if agent is None:
+            missing_issue.insert(0, "agent")
+        if missing_issue:
+            raise ReviewError(f"Missing issue field(s): {', '.join(missing_issue)}")
+        assert agent is not None
+
+        line_value = issue.get("line")
+        if line_value is None or line_value == "" or line_value.lower() == "null":
+            line_number = None
+        else:
+            try:
+                line_number = int(line_value)
+            except ValueError as exc:
+                raise ReviewError(f"Invalid line number: {line_value}") from exc
+
+        file_value = issue.get("file")
+        if file_value is not None and file_value.lower() == "null":
+            file_value = None
+
+        parsed_issues.append(
+            Issue(
+                agent=agent,
+                priority=issue["priority"],
+                file=file_value,
+                line=line_number,
+                commit_id=issue["commit_id"],
+                category=issue["category"],
+                description=issue["description"],
+                proposed_fix=issue["proposed_fix"],
+            )
+        )
+
+    return AgentReview(
+        pr_summary=PRSummary(number=pr_number, title=header["title"], description=pr_description),
+        issues=parsed_issues,
+    )
+
+
+def render_review_text(review: AgentReview) -> str:
+    """Render an AgentReview as structured text."""
+    lines: list[str] = [
+        f"PR_NUMBER: {review.pr_summary.number}",
+        f"PR_TITLE: {review.pr_summary.title}",
+        "PR_DESCRIPTION:",
+    ]
+
+    description = review.pr_summary.description or ""
+    if description:
+        lines.extend(f"  {line}" for line in description.splitlines())
+
+    for issue in review.issues:
+        lines.append("--- ISSUE ---")
+        lines.append(f"agent: {issue.agent}")
+        lines.append(f"priority: {issue.priority}")
+        lines.append(f"path: {issue.file if issue.file is not None else 'null'}")
+        lines.append(f"line: {issue.line if issue.line is not None else 'null'}")
+        lines.append(f"commit_id: {issue.commit_id}")
+        lines.append(f"category: {issue.category}")
+        lines.append("description:")
+        if issue.description:
+            lines.extend(f"  {line}" for line in issue.description.splitlines())
+        lines.append("proposed_fix:")
+        if issue.proposed_fix:
+            lines.extend(f"  {line}" for line in issue.proposed_fix.splitlines())
+
+    return "\n".join(lines) + "\n"
+
+
+def render_merged_review_text(review: MergedReview) -> str:
+    """Render a merged review as structured text."""
+    lines: list[str] = [
+        f"PR_NUMBER: {review.pr_summary.number}",
+        f"PR_TITLE: {review.pr_summary.title}",
+        "PR_DESCRIPTION:",
+    ]
+
+    if review.pr_summary.description:
+        lines.extend(f"  {line}" for line in review.pr_summary.description.splitlines())
+
+    if review.descriptions:
+        lines.append("AGENT_DESCRIPTIONS:")
+        for entry in review.descriptions:
+            agent = entry.get("agent", "unknown")
+            description = entry.get("description", "")
+            lines.append(f"  {agent}: {description}")
+
+    for issue in review.issues:
+        lines.append("--- ISSUE ---")
+        lines.append(f"agent: {issue.agent}")
+        lines.append(f"priority: {issue.priority}")
+        lines.append(f"path: {issue.file if issue.file is not None else 'null'}")
+        lines.append(f"line: {issue.line if issue.line is not None else 'null'}")
+        lines.append(f"commit_id: {issue.commit_id}")
+        lines.append(f"category: {issue.category}")
+        lines.append("description:")
+        if issue.description:
+            lines.extend(f"  {line}" for line in issue.description.splitlines())
+        lines.append("proposed_fix:")
+        if issue.proposed_fix:
+            lines.extend(f"  {line}" for line in issue.proposed_fix.splitlines())
+
+    return "\n".join(lines) + "\n"
+
+
+def load_review(file_path: Path) -> AgentReview:
+    """Load a review from a structured text file."""
+    try:
+        text = file_path.read_text(encoding="utf-8")
+    except FileNotFoundError as e:
         raise ReviewError(f"Failed to load review from {file_path}: {e}") from e
+
+    try:
+        return parse_review_text(text, file_path)
+    except ReviewError:
+        raise
+    except Exception as e:
+        raise ReviewError(f"Failed to parse review from {file_path}: {e}") from e
 
 
 def merge_reviews(
@@ -101,9 +353,8 @@ def merge_reviews(
 
 
 def save_merged_review(review: MergedReview, output_file: Path) -> None:
-    """Save merged review to a JSON file."""
-    with open(output_file, "w") as f:
-        json.dump(review.model_dump(), f, indent=2)
+    """Save merged review to a structured text file."""
+    output_file.write_text(render_merged_review_text(review), encoding="utf-8")
 
 
 def count_issues_by_priority(issues: list[Issue]) -> tuple[int, int, int]:

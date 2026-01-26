@@ -56,37 +56,32 @@ Your task:
    - Avoid reporting on issues that were already noted in the PR comments
      or fixed in subsequent commits.
 
-4. Prepare your findings in valid JSON format with this exact structure:
-{{
-  "pr_summary": {{
-    "number": {pr_number},
-    "title": "<pr_title>",
-    "description": "<brief description of what changes this PR makes>"
-  }},
-  "issues": [
-    {{
-      "agent": "{agent}",
-      "priority": "P0|P1|P2",
-      "file": "<full_file_path>",
-      "line": <line_number_or_null>,
-      "commit_id": "{commit_sha}",
-      "category": "<bug|security|performance|quality|style>",
-      "description": "<detailed description of the issue>",
-      "proposed_fix": "<concrete suggestion on how to fix it>"
-    }}
-  ]
-}}
+4. Prepare your findings in this exact text format:
+PR_NUMBER: {pr_number}
+PR_TITLE: "<pr_title>"
+PR_DESCRIPTION:
+  <brief description of what changes this PR makes>
+
+--- ISSUE ---
+agent: "{agent}"
+priority: "P0|P1|P2"
+path: "<repo-relative file path or null>"
+line: <line_number_or_null>
+commit_id: "{commit_sha}"
+category: "<bug|security|performance|quality|style>"
+description:
+  <detailed description of the issue (indent all lines by two spaces)>
+proposed_fix:
+  <concrete suggestion on how to fix it (indent all lines by two spaces)>
+
+Repeat the ISSUE block for each finding. If a field is unknown, use `null`.
 
 Priority definitions:
 - P0: Critical issues that must be fixed (security vulnerabilities, bugs causing crashes/data loss)
 - P1: Important issues that should be fixed (logic bugs, performance problems, poor error handling)
 - P2: Nice-to-have improvements (code style, minor optimizations, suggestions)
 
-5. Write the JSON to '{container_workspace_dir}/repo/.marx/{agent}-review.json'.
-   The file must contain only the JSON object described above
-   (no Markdown fences or extra commentary).
-   Do not include Markdown code fences (``` ... ```) inside any JSON field values.
-   Ensure any backslashes in JSON strings are properly escaped (e.g., use `\\\\` for a literal `\\`).
-6. After writing the file, validate that it is well-formed JSON,
-   using a command like `python -m json.tool` and fix any errors it reports.
-   Then respond with a short confirmation message (no JSON in the message body).
+5. Write the output to '{container_workspace_dir}/repo/.marx/{agent}-review.txt'.
+   The file must contain only the structured text described above (no Markdown fences or extra commentary).
+6. After writing the file, re-open it and verify all required fields are present for every issue.
+   Then respond with a short confirmation message (no review content in the message body).

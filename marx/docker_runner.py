@@ -1,8 +1,6 @@
 """Docker container orchestration for running AI agent reviews."""
 
-import json
 import os
-import re
 import shutil
 import tempfile
 import uuid
@@ -105,7 +103,7 @@ class DockerRunner:
                 except Exception as e:
                     errors[agent] = e
                     print_error(f"{agent.capitalize()} analysis failed: {e}")
-                    output_file = run_path / f"{agent}-review.json"
+                    output_file = run_path / f"{agent}-review.txt"
                     self._create_error_review(output_file, prompt_config.pr_number, agent, str(e))
                     results[agent] = output_file
 
@@ -134,7 +132,7 @@ class DockerRunner:
             run_path,
             model_override,
             prompt_override=prompt,
-            output_basename="dedup-review.json",
+            output_basename="dedup-review.txt",
         )
 
     def _run_single_agent(
@@ -150,11 +148,11 @@ class DockerRunner:
         """Run a single agent in a Docker container."""
         print_info(f"Starting {agent.capitalize()} analysis...")
 
-        base_name = output_basename or f"{agent}-review.json"
+        base_name = output_basename or f"{agent}-review.txt"
         base_stem = Path(base_name).stem
 
         output_file = run_path / base_name
-        raw_output_file = run_path / f"{base_stem}-raw.jsonl"
+        raw_output_file = run_path / f"{base_stem}-raw.txt"
         stderr_file = run_path / f"{base_stem}.stderr"
 
         output_file.unlink(missing_ok=True)
@@ -191,28 +189,23 @@ class DockerRunner:
 
             raw_output_file.write_text(container_output)
 
-            workspace_review_path = run_path / "workspace_review.json"
+            workspace_review_path = run_path / "workspace_review.txt"
             if workspace_review_path.exists():
                 shutil.copy(workspace_review_path, output_file)
                 workspace_review_path.unlink()
 
             if output_file.exists():
                 try:
-                    with open(output_file) as f:
-                        review_data = json.load(f)
-                    sanitized_data, was_modified = self._sanitize_review_data(review_data)
-                    if was_modified:
-                        with open(output_file, "w") as f:
-                            json.dump(sanitized_data, f, indent=2)
+                    from marx.review import load_review
+
+                    load_review(output_file)
                     print_success(f"{agent.capitalize()} analysis completed")
-                except json.JSONDecodeError:
-                    print_warning(
-                        f"{agent.capitalize()} produced invalid JSON, creating error review"
-                    )
+                except Exception as exc:
+                    print_warning(f"{agent.capitalize()} produced an invalid review format: {exc}")
                     invalid_file = output_file.with_suffix(f"{output_file.suffix}.invalid")
                     shutil.move(output_file, invalid_file)
                     self._create_error_review(
-                        output_file, prompt_config.pr_number, agent, "produced invalid JSON"
+                        output_file, prompt_config.pr_number, agent, "produced invalid review text"
                     )
             else:
                 print_warning(f"{agent.capitalize()} did not create the expected review file")
@@ -251,7 +244,7 @@ class DockerRunner:
         container_prompt = f"{CONTAINER_RUNNER_DIR}/{prompt_path.name}"
         container_runner = f"{CONTAINER_RUNNER_DIR}/{runner_script_path.name}"
         container_stderr = f"{CONTAINER_RUNNER_DIR}/{stderr_file.name}"
-        container_output_name = output_basename or f"{agent}-review.json"
+        container_output_name = output_basename or f"{agent}-review.txt"
 
         volumes = {
             str(run_path): {"bind": CONTAINER_RUNNER_DIR, "mode": "rw"},
@@ -352,44 +345,6 @@ class DockerRunner:
 
         return content
 
-    @staticmethod
-    def _strip_markdown_fences(text: str) -> tuple[str, bool]:
-        """Remove Markdown code fences from a string."""
-        if "```" not in text:
-            return text, False
-
-        fence_pattern = re.compile(r"```(?:[^\n]*)\n(.*?)```", re.DOTALL)
-        cleaned = fence_pattern.sub(lambda match: match.group(1).strip("\n"), text)
-        cleaned = cleaned.replace("```", "")
-
-        return cleaned, cleaned != text
-
-    @classmethod
-    def _sanitize_review_data(cls, data: object) -> tuple[object, bool]:
-        """Strip Markdown fences from all string values in a review payload."""
-        if isinstance(data, dict):
-            updated: dict[str, object] = {}
-            changed = False
-            for key, value in data.items():
-                new_value, was_modified = cls._sanitize_review_data(value)
-                updated[key] = new_value
-                changed |= was_modified
-            return updated, changed
-
-        if isinstance(data, list):
-            updated_list: list[object] = []
-            changed = False
-            for item in data:
-                new_item, was_modified = cls._sanitize_review_data(item)
-                updated_list.append(new_item)
-                changed |= was_modified
-            return updated_list, changed
-
-        if isinstance(data, str):
-            return cls._strip_markdown_fences(data)
-
-        return data, False
-
     def _generate_prompt(self, config: ReviewPrompt, agent: str) -> str:
         """Generate the review prompt for an agent."""
         template = load_review_prompt_template()
@@ -420,7 +375,7 @@ class DockerRunner:
             review_sources=review_sources,
             container_runner_dir=CONTAINER_RUNNER_DIR,
             container_workspace_dir=CONTAINER_WORKSPACE_DIR,
-            output_file_name="dedup-review.json",
+            output_file_name="dedup-review.txt",
         )
 
     def _generate_runner_script(self) -> str:
@@ -438,9 +393,9 @@ COMMIT_SHA="$6"
 HOST_UID="${HOST_UID:-1000}"
 HOST_GID="${HOST_GID:-1000}"
 CONTAINER_RUNNER_DIR="${CONTAINER_RUNNER_DIR:-/runner}"
-MODEL_REVIEW_PATH="${MODEL_REVIEW_PATH:-${CONTAINER_RUNNER_DIR}/${MODEL_CMD}-review.json}"
+MODEL_REVIEW_PATH="${MODEL_REVIEW_PATH:-${CONTAINER_RUNNER_DIR}/${MODEL_CMD}-review.txt}"
 MODEL_REVIEW_WORKSPACE_PATH="${MODEL_REVIEW_WORKSPACE_PATH:-\\
-/workspace/repo/.marx/${MODEL_CMD}-review.json}"
+/workspace/repo/.marx/${MODEL_CMD}-review.txt}"
 
 TARGET_USER="marx"
 if getent passwd "$HOST_UID" >/dev/null 2>&1; then
@@ -485,11 +440,11 @@ export HOME="$HOME_OVERRIDE"
 : > "$STDERR_FILE"
 exec 2>>"$STDERR_FILE"
 
-: "${MODEL_REVIEW_PATH:=/workspace/${MODEL_CMD}-review.json}"
+: "${MODEL_REVIEW_PATH:=/workspace/${MODEL_CMD}-review.txt}"
 mkdir -p "$(dirname "$MODEL_REVIEW_PATH")"
 rm -f "$MODEL_REVIEW_PATH"
 
-: "${MODEL_REVIEW_WORKSPACE_PATH:=/workspace/repo/.marx/${MODEL_CMD}-review.json}"
+: "${MODEL_REVIEW_WORKSPACE_PATH:=/workspace/repo/.marx/${MODEL_CMD}-review.txt}"
 mkdir -p "$(dirname "$MODEL_REVIEW_WORKSPACE_PATH")"
 rm -f "$MODEL_REVIEW_WORKSPACE_PATH"
 
@@ -688,14 +643,15 @@ fi
 
     @staticmethod
     def _create_error_review(output_file: Path, pr_number: int, agent: str, error_msg: str) -> None:
-        """Create an error review JSON file."""
-        error_review = {
-            "pr_summary": {
-                "number": pr_number,
-                "title": "Error",
-                "description": f"{agent.capitalize()} {error_msg}",
-            },
-            "issues": [],
-        }
-        with open(output_file, "w") as f:
-            json.dump(error_review, f, indent=2)
+        """Create an error review text file."""
+        from marx.review import AgentReview, PRSummary, render_review_text
+
+        error_review = AgentReview(
+            pr_summary=PRSummary(
+                number=pr_number,
+                title="Error",
+                description=f"{agent.capitalize()} {error_msg}",
+            ),
+            issues=[],
+        )
+        output_file.write_text(render_review_text(error_review), encoding="utf-8")

@@ -16,10 +16,13 @@ from marx.docker_runner import DockerRunner, ReviewPrompt
 from marx.exceptions import DependencyError, MarxError
 from marx.github import GitHubClient
 from marx.review import (
+    AgentReview,
     MergedReview,
+    PRSummary,
     count_issues_by_priority,
     merge_reviews,
     post_github_review,
+    render_review_text,
     save_merged_review,
 )
 from marx.ui import (
@@ -372,11 +375,11 @@ def main(
         script_dir = Path(__file__).parent.parent
         run_dir = setup_run_directory(script_dir, pr_number, branch_name, resume)
 
-        claude_output = run_dir / "claude-review.json"
-        codex_output = run_dir / "codex-review.json"
-        gemini_output = run_dir / "gemini-review.json"
-        dedup_output = run_dir / "dedup-review.json"
-        merged_output = run_dir / "merged-review.json"
+        claude_output = run_dir / "claude-review.txt"
+        codex_output = run_dir / "codex-review.txt"
+        gemini_output = run_dir / "gemini-review.txt"
+        dedup_output = run_dir / "dedup-review.txt"
+        merged_output = run_dir / "merged-review.txt"
 
         if not resume:
             dedup_output.unlink(missing_ok=True)
@@ -395,16 +398,15 @@ def main(
                     print_warning(
                         f"No {agent_name} review found at {output_file}, creating placeholder"
                     )
-                    placeholder = {
-                        "pr_summary": {
-                            "number": pr_number,
-                            "title": "Not run",
-                            "description": f"{agent_name} review not found in resume mode",
-                        },
-                        "issues": [],
-                    }
-                    with open(output_file, "w") as f:
-                        json.dump(placeholder, f)
+                    placeholder = AgentReview(
+                        pr_summary=PRSummary(
+                            number=pr_number,
+                            title="Not run",
+                            description=f"{agent_name} review not found in resume mode",
+                        ),
+                        issues=[],
+                    )
+                    output_file.write_text(render_review_text(placeholder), encoding="utf-8")
         else:
             docker_runner = DockerRunner(script_dir)
             docker_runner.ensure_image()
@@ -431,7 +433,7 @@ def main(
                     dedupe_model_override if dedupe_agent else model_overrides.get(agents_to_run[0])
                 )
                 print_header(f"🧹 Deduplicating issues with {effective_dedupe_agent.capitalize()}")
-                review_files = {agent: run_dir / f"{agent}-review.json" for agent in agents_to_run}
+                review_files = {agent: run_dir / f"{agent}-review.txt" for agent in agents_to_run}
 
                 try:
                     docker_runner.run_deduplication_agent(
@@ -446,18 +448,17 @@ def main(
                     print_warning(f"Deduplication step failed: {exc}")
 
             for agent_name in SUPPORTED_AGENTS:
-                output_file = run_dir / f"{agent_name}-review.json"
+                output_file = run_dir / f"{agent_name}-review.txt"
                 if agent_name not in agents_to_run:
-                    placeholder = {
-                        "pr_summary": {
-                            "number": pr_number,
-                            "title": "Not run",
-                            "description": f"{agent_name} was not selected",
-                        },
-                        "issues": [],
-                    }
-                    with open(output_file, "w") as f:
-                        json.dump(placeholder, f)
+                    placeholder = AgentReview(
+                        pr_summary=PRSummary(
+                            number=pr_number,
+                            title="Not run",
+                            description=f"{agent_name} was not selected",
+                        ),
+                        issues=[],
+                    )
+                    output_file.write_text(render_review_text(placeholder), encoding="utf-8")
 
         print_info("Merging results from all models...")
         merged_review = merge_reviews(claude_output, codex_output, gemini_output, dedup_output)

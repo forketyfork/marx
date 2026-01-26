@@ -1,6 +1,5 @@
 """Tests for review processing."""
 
-import json
 from pathlib import Path
 
 from marx.review import (
@@ -122,25 +121,29 @@ def test_filter_issues_invalid_line() -> None:
 
 def test_load_review(tmp_path: Path) -> None:
     """Test loading review from file."""
-    review_file = tmp_path / "review.json"
-    review_data = {
-        "pr_summary": {"number": 123, "title": "Test PR", "description": "Test description"},
-        "issues": [
-            {
-                "agent": "claude",
-                "priority": "P0",
-                "file": "test.py",
-                "line": 10,
-                "commit_id": "abc123",
-                "category": "bug",
-                "description": "Test issue",
-                "proposed_fix": "Test fix",
-            }
-        ],
-    }
-
-    with open(review_file, "w") as f:
-        json.dump(review_data, f)
+    review_file = tmp_path / "review.txt"
+    review_file.write_text(
+        "\n".join(
+            [
+                "PR_NUMBER: 123",
+                "PR_TITLE: Test PR",
+                "PR_DESCRIPTION:",
+                "  Test description",
+                "--- ISSUE ---",
+                "agent: claude",
+                "priority: P0",
+                "path: test.py",
+                "line: 10",
+                "commit_id: abc123",
+                "category: bug",
+                "description:",
+                "  Test issue",
+                "proposed_fix:",
+                "  Test fix",
+                "",
+            ]
+        )
+    )
 
     review = load_review(review_file)
 
@@ -152,53 +155,67 @@ def test_load_review(tmp_path: Path) -> None:
 
 def test_merge_reviews(tmp_path: Path) -> None:
     """Test merging multiple reviews."""
-    claude_review = {
-        "pr_summary": {"number": 123, "title": "Test PR", "description": "Claude description"},
-        "issues": [
-            {
-                "agent": "claude",
-                "priority": "P0",
-                "file": "test.py",
-                "line": 10,
-                "commit_id": "abc123",
-                "category": "bug",
-                "description": "Claude issue",
-                "proposed_fix": "Claude fix",
-            }
-        ],
-    }
+    claude_file = tmp_path / "claude-review.txt"
+    codex_file = tmp_path / "codex-review.txt"
+    gemini_file = tmp_path / "gemini-review.txt"
 
-    codex_review = {
-        "pr_summary": {"number": 123, "title": "Test PR", "description": "Codex description"},
-        "issues": [
-            {
-                "agent": "codex",
-                "priority": "P1",
-                "file": "test.py",
-                "line": 20,
-                "commit_id": "abc123",
-                "category": "performance",
-                "description": "Codex issue",
-                "proposed_fix": "Codex fix",
-            }
-        ],
-    }
+    claude_file.write_text(
+        "\n".join(
+            [
+                "PR_NUMBER: 123",
+                "PR_TITLE: Test PR",
+                "PR_DESCRIPTION:",
+                "  Claude description",
+                "--- ISSUE ---",
+                "agent: claude",
+                "priority: P0",
+                "path: test.py",
+                "line: 10",
+                "commit_id: abc123",
+                "category: bug",
+                "description:",
+                "  Claude issue",
+                "proposed_fix:",
+                "  Claude fix",
+                "",
+            ]
+        )
+    )
 
-    gemini_review = {
-        "pr_summary": {"number": 123, "title": "Test PR", "description": "Gemini description"},
-        "issues": [],
-    }
+    codex_file.write_text(
+        "\n".join(
+            [
+                "PR_NUMBER: 123",
+                "PR_TITLE: Test PR",
+                "PR_DESCRIPTION:",
+                "  Codex description",
+                "--- ISSUE ---",
+                "agent: codex",
+                "priority: P1",
+                "path: test.py",
+                "line: 20",
+                "commit_id: abc123",
+                "category: performance",
+                "description:",
+                "  Codex issue",
+                "proposed_fix:",
+                "  Codex fix",
+                "",
+            ]
+        )
+    )
 
-    claude_file = tmp_path / "claude.json"
-    codex_file = tmp_path / "codex.json"
-    gemini_file = tmp_path / "gemini.json"
-
-    with open(claude_file, "w") as f:
-        json.dump(claude_review, f)
-    with open(codex_file, "w") as f:
-        json.dump(codex_review, f)
-    with open(gemini_file, "w") as f:
-        json.dump(gemini_review, f)
+    gemini_file.write_text(
+        "\n".join(
+            [
+                "PR_NUMBER: 123",
+                "PR_TITLE: Test PR",
+                "PR_DESCRIPTION:",
+                "  Gemini description",
+                "",
+            ]
+        )
+    )
 
     merged = merge_reviews(claude_file, codex_file, gemini_file)
 
@@ -212,49 +229,52 @@ def test_merge_reviews(tmp_path: Path) -> None:
 def test_merge_reviews_prefers_dedup(tmp_path: Path) -> None:
     """Test that merge_reviews uses deduplicated issues when provided."""
 
-    claude_file = tmp_path / "claude.json"
-    codex_file = tmp_path / "codex.json"
-    gemini_file = tmp_path / "gemini.json"
-    dedup_file = tmp_path / "dedup.json"
+    claude_file = tmp_path / "claude-review.txt"
+    codex_file = tmp_path / "codex-review.txt"
+    gemini_file = tmp_path / "gemini-review.txt"
+    dedup_file = tmp_path / "dedup-review.txt"
 
     for path in (claude_file, codex_file, gemini_file):
         path.write_text(
-            json.dumps(
-                {
-                    "pr_summary": {"number": 42, "title": "Test PR", "description": ""},
-                    "issues": [
-                        {
-                            "agent": path.stem,
-                            "priority": "P1",
-                            "file": None,
-                            "line": None,
-                            "commit_id": "abc123",
-                            "category": "quality",
-                            "description": f"Issue from {path.stem}",
-                            "proposed_fix": "",
-                        }
-                    ],
-                }
+            "\n".join(
+                [
+                    "PR_NUMBER: 42",
+                    "PR_TITLE: Test PR",
+                    "PR_DESCRIPTION:",
+                    "--- ISSUE ---",
+                    f"agent: {path.stem.split('-', 1)[0]}",
+                    "priority: P1",
+                    "path: null",
+                    "line: null",
+                    "commit_id: abc123",
+                    "category: quality",
+                    "description:",
+                    f"  Issue from {path.stem}",
+                    "proposed_fix:",
+                    "",
+                ]
             )
         )
 
     dedup_file.write_text(
-        json.dumps(
-            {
-                "pr_summary": {"number": 42, "title": "Test PR", "description": ""},
-                "issues": [
-                    {
-                        "agent": "claude,codex",
-                        "priority": "P0",
-                        "file": "core.py",
-                        "line": 5,
-                        "commit_id": "abc123",
-                        "category": "bug",
-                        "description": "Deduplicated issue",
-                        "proposed_fix": "Fix it",
-                    }
-                ],
-            }
+        "\n".join(
+            [
+                "PR_NUMBER: 42",
+                "PR_TITLE: Test PR",
+                "PR_DESCRIPTION:",
+                "--- ISSUE ---",
+                "agent: claude,codex",
+                "priority: P0",
+                "path: core.py",
+                "line: 5",
+                "commit_id: abc123",
+                "category: bug",
+                "description:",
+                "  Deduplicated issue",
+                "proposed_fix:",
+                "  Fix it",
+                "",
+            ]
         )
     )
 
