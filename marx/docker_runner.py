@@ -526,11 +526,18 @@ write_preflight_context() {
     mkdir -p "$preflight_dir"
     : > "$instructions"
 
-    for file in AGENTS.md CLAUDE.md CODEX.md GEMINI.md GPT.md; do
-        if [[ -f "$file" ]]; then
-            echo "$file" >> "$instructions"
-        fi
-    done
+    if command -v rg >/dev/null 2>&1; then
+        rg --files -g 'AGENTS.md' -g 'CLAUDE.md' -g 'CODEX.md' -g 'GEMINI.md' -g 'GPT.md' \
+            /workspace/repo | LC_ALL=C sort -u > "$instructions"
+    else
+        find /workspace/repo -type f \\( \
+            -name 'AGENTS.md' -o \
+            -name 'CLAUDE.md' -o \
+            -name 'CODEX.md' -o \
+            -name 'GEMINI.md' -o \
+            -name 'GPT.md' \
+        \\) -print | LC_ALL=C sort -u > "$instructions"
+    fi
 
     local view_status="skipped"
     local diff_status="skipped"

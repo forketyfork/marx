@@ -63,7 +63,6 @@ def parse_review_text(text: str, source: Path | None = None) -> AgentReview:
         "agent": "agent",
         "priority": "priority",
         "path": "file",
-        "file": "file",
         "line": "line",
         "commit_id": "commit_id",
         "category": "category",
