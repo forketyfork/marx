@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import tempfile
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -285,7 +286,8 @@ class DockerRunner:
                 volumes[str(host_config_path)] = {"bind": container_config_path, "mode": "ro"}
                 environment[f"{agent.upper()}_CONFIG_SRC"] = container_config_path
 
-        container_name = f"marx-{agent}-{prompt_config.pr_number}"
+        container_suffix = uuid.uuid4().hex[:8]
+        container_name = f"marx-{agent}-{prompt_config.pr_number}-{container_suffix}"
 
         try:
             container = self.client.containers.run(
