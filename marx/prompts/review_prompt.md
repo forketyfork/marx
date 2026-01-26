@@ -86,5 +86,7 @@ Priority definitions:
    The file must contain only the JSON object described above
    (no Markdown fences or extra commentary).
    Do not include Markdown code fences (``` ... ```) inside any JSON field values.
+   Ensure any backslashes in JSON strings are properly escaped (e.g., use `\\\\` for a literal `\\`).
 6. After writing the file, validate that it is well-formed JSON,
-   then respond with a short confirmation message (no JSON in the message body).
+   using a command like `python -m json.tool` and fix any errors it reports.
+   Then respond with a short confirmation message (no JSON in the message body).
