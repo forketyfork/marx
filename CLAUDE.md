@@ -102,7 +102,7 @@ Marx is a CLI tool that orchestrates parallel AI code reviews of GitHub PRs usin
   - Clones repository and checks out PR branch at specific commit
   - Copies agent config directories if available
   - Runs agent-specific CLI commands with appropriate flags
-  - Copies review JSON from workspace to run directory
+  - Copies review output from workspace to run directory
 - Handles container errors and produces fallback error reviews
 
 **Review Processing** (`marx/review.py`):
@@ -123,10 +123,10 @@ Marx is a CLI tool that orchestrates parallel AI code reviews of GitHub PRs usin
 
 **Run Directory Structure**:
 - Created at `runs/pr-{number}-{branch}/` relative to project root
-- Contains individual agent reviews: `{agent}-review.json`
-- Contains raw agent outputs: `{agent}-raw.jsonl`
-- Contains stderr logs: `{agent}-review.json.stderr`
-- Contains merged review: `merged-review.json`
+- Contains individual agent reviews: `{agent}-review.txt`
+- Contains raw agent outputs: `{agent}-raw.txt`
+- Contains stderr logs: `{agent}-review.stderr`
+- Contains merged review: `merged-review.txt`
 - Contains pending review payload: `pending-review-request.json`
 
 **Docker Container Environment**:
@@ -134,8 +134,8 @@ Marx is a CLI tool that orchestrates parallel AI code reviews of GitHub PRs usin
 - Working directory: `/workspace` (repository cloned to `/workspace/repo`)
 - Runner artifacts mounted at: `/runner`
 - Config directories mounted read-only at: `/host-configs/{agent}`
-- Agents write review JSON to: `/workspace/repo/.marx/{agent}-review.json`
-- Runner script copies it to: `/runner/{agent}-review.json`
+- Agents write reviews to: `/workspace/repo/.marx/{agent}-review.txt`
+- Runner script copies it to: `/runner/{agent}-review.txt`
 
 **Agent Review Prompt**:
 Each agent receives a detailed prompt instructing it to:
@@ -145,8 +145,8 @@ Each agent receives a detailed prompt instructing it to:
 - Focus on changed files and lines in the PR diff
 - Only emit inline comments for exact lines in the new revision
 - Set `line: null` for issues not tied to specific changed lines
-- Output structured JSON with `pr_summary` and `issues` arrays
-- Write the JSON to `/workspace/repo/.marx/{agent}-review.json`
+- Output structured text with a PR header and repeated ISSUE blocks
+- Write the review to `/workspace/repo/.marx/{agent}-review.txt`
 
 **Authentication Methods**:
 1. API keys via environment variables (preferred for CI/CD):
@@ -195,6 +195,6 @@ Optional:
 - The tool never modifies the repository being reviewed (read-only operations)
 - Worktrees are no longer used; instead, repositories are cloned in containers
 - Agent failures produce empty reviews with error descriptions (non-fatal)
-- Invalid JSON from agents is handled gracefully with placeholder reviews
+- Invalid review outputs from agents are handled gracefully with placeholder reviews
 - Resume mode reuses previous agent outputs and skips Docker execution
 - Agents not selected via `--agents` flag receive placeholder "Not run" reviews

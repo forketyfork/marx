@@ -1,9 +1,9 @@
 """Docker container orchestration for running AI agent reviews."""
 
-import json
 import os
 import shutil
 import tempfile
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -103,7 +103,7 @@ class DockerRunner:
                 except Exception as e:
                     errors[agent] = e
                     print_error(f"{agent.capitalize()} analysis failed: {e}")
-                    output_file = run_path / f"{agent}-review.json"
+                    output_file = run_path / f"{agent}-review.txt"
                     self._create_error_review(output_file, prompt_config.pr_number, agent, str(e))
                     results[agent] = output_file
 
@@ -132,7 +132,7 @@ class DockerRunner:
             run_path,
             model_override,
             prompt_override=prompt,
-            output_basename="dedup-review.json",
+            output_basename="dedup-review.txt",
         )
 
     def _run_single_agent(
@@ -148,11 +148,11 @@ class DockerRunner:
         """Run a single agent in a Docker container."""
         print_info(f"Starting {agent.capitalize()} analysis...")
 
-        base_name = output_basename or f"{agent}-review.json"
+        base_name = output_basename or f"{agent}-review.txt"
         base_stem = Path(base_name).stem
 
         output_file = run_path / base_name
-        raw_output_file = run_path / f"{base_stem}-raw.jsonl"
+        raw_output_file = run_path / f"{base_stem}-raw.txt"
         stderr_file = run_path / f"{base_stem}.stderr"
 
         output_file.unlink(missing_ok=True)
@@ -189,24 +189,23 @@ class DockerRunner:
 
             raw_output_file.write_text(container_output)
 
-            workspace_review_path = run_path / "workspace_review.json"
+            workspace_review_path = run_path / "workspace_review.txt"
             if workspace_review_path.exists():
                 shutil.copy(workspace_review_path, output_file)
                 workspace_review_path.unlink()
 
             if output_file.exists():
                 try:
-                    with open(output_file) as f:
-                        json.load(f)
+                    from marx.review import load_review
+
+                    load_review(output_file)
                     print_success(f"{agent.capitalize()} analysis completed")
-                except json.JSONDecodeError:
-                    print_warning(
-                        f"{agent.capitalize()} produced invalid JSON, creating error review"
-                    )
+                except Exception as exc:
+                    print_warning(f"{agent.capitalize()} produced an invalid review format: {exc}")
                     invalid_file = output_file.with_suffix(f"{output_file.suffix}.invalid")
                     shutil.move(output_file, invalid_file)
                     self._create_error_review(
-                        output_file, prompt_config.pr_number, agent, "produced invalid JSON"
+                        output_file, prompt_config.pr_number, agent, "produced invalid review text"
                     )
             else:
                 print_warning(f"{agent.capitalize()} did not create the expected review file")
@@ -245,7 +244,7 @@ class DockerRunner:
         container_prompt = f"{CONTAINER_RUNNER_DIR}/{prompt_path.name}"
         container_runner = f"{CONTAINER_RUNNER_DIR}/{runner_script_path.name}"
         container_stderr = f"{CONTAINER_RUNNER_DIR}/{stderr_file.name}"
-        container_output_name = output_basename or f"{agent}-review.json"
+        container_output_name = output_basename or f"{agent}-review.txt"
 
         volumes = {
             str(run_path): {"bind": CONTAINER_RUNNER_DIR, "mode": "rw"},
@@ -280,7 +279,8 @@ class DockerRunner:
                 volumes[str(host_config_path)] = {"bind": container_config_path, "mode": "ro"}
                 environment[f"{agent.upper()}_CONFIG_SRC"] = container_config_path
 
-        container_name = f"marx-{agent}-{prompt_config.pr_number}"
+        container_suffix = uuid.uuid4().hex[:8]
+        container_name = f"marx-{agent}-{prompt_config.pr_number}-{container_suffix}"
 
         try:
             container = self.client.containers.run(
@@ -375,7 +375,7 @@ class DockerRunner:
             review_sources=review_sources,
             container_runner_dir=CONTAINER_RUNNER_DIR,
             container_workspace_dir=CONTAINER_WORKSPACE_DIR,
-            output_file_name="dedup-review.json",
+            output_file_name="dedup-review.txt",
         )
 
     def _generate_runner_script(self) -> str:
@@ -393,9 +393,9 @@ COMMIT_SHA="$6"
 HOST_UID="${HOST_UID:-1000}"
 HOST_GID="${HOST_GID:-1000}"
 CONTAINER_RUNNER_DIR="${CONTAINER_RUNNER_DIR:-/runner}"
-MODEL_REVIEW_PATH="${MODEL_REVIEW_PATH:-${CONTAINER_RUNNER_DIR}/${MODEL_CMD}-review.json}"
+MODEL_REVIEW_PATH="${MODEL_REVIEW_PATH:-${CONTAINER_RUNNER_DIR}/${MODEL_CMD}-review.txt}"
 MODEL_REVIEW_WORKSPACE_PATH="${MODEL_REVIEW_WORKSPACE_PATH:-\\
-/workspace/repo/.marx/${MODEL_CMD}-review.json}"
+/workspace/repo/.marx/${MODEL_CMD}-review.txt}"
 
 TARGET_USER="marx"
 if getent passwd "$HOST_UID" >/dev/null 2>&1; then
@@ -440,11 +440,11 @@ export HOME="$HOME_OVERRIDE"
 : > "$STDERR_FILE"
 exec 2>>"$STDERR_FILE"
 
-: "${MODEL_REVIEW_PATH:=/workspace/${MODEL_CMD}-review.json}"
+: "${MODEL_REVIEW_PATH:=/workspace/${MODEL_CMD}-review.txt}"
 mkdir -p "$(dirname "$MODEL_REVIEW_PATH")"
 rm -f "$MODEL_REVIEW_PATH"
 
-: "${MODEL_REVIEW_WORKSPACE_PATH:=/workspace/repo/.marx/${MODEL_CMD}-review.json}"
+: "${MODEL_REVIEW_WORKSPACE_PATH:=/workspace/repo/.marx/${MODEL_CMD}-review.txt}"
 mkdir -p "$(dirname "$MODEL_REVIEW_WORKSPACE_PATH")"
 rm -f "$MODEL_REVIEW_WORKSPACE_PATH"
 
@@ -514,6 +514,84 @@ fi
 
 cd /workspace/repo
 
+write_preflight_context() {
+    local preflight_dir="/workspace/repo/.marx"
+    local pr_view="${preflight_dir}/pr-view.json"
+    local pr_comments="${preflight_dir}/pr-comments.json"
+    local pr_diff="${preflight_dir}/pr-diff.patch"
+    local changed_files="${preflight_dir}/changed-files.txt"
+    local instructions="${preflight_dir}/instructions.txt"
+    local preflight="${preflight_dir}/preflight.md"
+
+    mkdir -p "$preflight_dir"
+    : > "$instructions"
+
+    if command -v rg >/dev/null 2>&1; then
+        rg --files -g 'AGENTS.md' -g 'CLAUDE.md' -g 'CODEX.md' -g 'GEMINI.md' -g 'GPT.md' \
+            /workspace/repo | LC_ALL=C sort -u > "$instructions"
+    else
+        find /workspace/repo -type f \\( \
+            -name 'AGENTS.md' -o \
+            -name 'CLAUDE.md' -o \
+            -name 'CODEX.md' -o \
+            -name 'GEMINI.md' -o \
+            -name 'GPT.md' \
+        \\) -print | LC_ALL=C sort -u > "$instructions"
+    fi
+
+    local view_status="skipped"
+    local diff_status="skipped"
+    local files_status="skipped"
+    local comments_status="skipped"
+
+    if [[ -n "$PR_NUMBER" ]]; then
+        if gh pr view "$PR_NUMBER" --json \
+            title,body,author,number,baseRefName,headRefName > "$pr_view"; then
+            view_status="ok"
+        else
+            view_status="failed"
+            echo "{}" > "$pr_view"
+        fi
+
+        if gh pr diff "$PR_NUMBER" > "$pr_diff"; then
+            diff_status="ok"
+        else
+            diff_status="failed"
+            : > "$pr_diff"
+        fi
+
+        if gh pr diff "$PR_NUMBER" --name-only > "$changed_files"; then
+            files_status="ok"
+        else
+            files_status="failed"
+            : > "$changed_files"
+        fi
+
+        if gh api "repos/${REPO_SLUG}/pulls/${PR_NUMBER}/comments" --paginate > "$pr_comments"; then
+            comments_status="ok"
+        else
+            comments_status="failed"
+            echo "[]" > "$pr_comments"
+        fi
+    fi
+
+    cat > "$preflight" <<EOF
+# PR preflight context
+
+These files are generated by the runner before the agent starts. Read them first.
+
+- pr_view: ${pr_view} (status: ${view_status})
+- pr_diff: ${pr_diff} (status: ${diff_status})
+- changed_files: ${changed_files} (status: ${files_status})
+- pr_comments: ${pr_comments} (status: ${comments_status})
+- instruction_files: ${instructions}
+
+Base/head refs are available in ${pr_view}.
+EOF
+}
+
+write_preflight_context
+
 case "$MODEL_CMD" in
     claude)
         setup_credentials "${CLAUDE_CONFIG_SRC:-}" "$HOME/.claude"
@@ -572,14 +650,15 @@ fi
 
     @staticmethod
     def _create_error_review(output_file: Path, pr_number: int, agent: str, error_msg: str) -> None:
-        """Create an error review JSON file."""
-        error_review = {
-            "pr_summary": {
-                "number": pr_number,
-                "title": "Error",
-                "description": f"{agent.capitalize()} {error_msg}",
-            },
-            "issues": [],
-        }
-        with open(output_file, "w") as f:
-            json.dump(error_review, f, indent=2)
+        """Create an error review text file."""
+        from marx.review import AgentReview, PRSummary, render_review_text
+
+        error_review = AgentReview(
+            pr_summary=PRSummary(
+                number=pr_number,
+                title="Error",
+                description=f"{agent.capitalize()} {error_msg}",
+            ),
+            issues=[],
+        )
+        output_file.write_text(render_review_text(error_review), encoding="utf-8")

@@ -34,8 +34,10 @@ marx --pr 123 --agents claude,codex,gemini
 - **Containerized Checkout**: Clones the PR branch inside Docker so your local repo stays untouched
 - **Intelligent PR Filtering**: Automatically filters PRs where you're not the author or reviewer
 - **Docker Isolation**: All AI models run in containers with proper permissions
-- **Structured Output**: JSON-formatted results with priority-based issue categorization
+- **Structured Review Files**: Line-based, machine-parseable review outputs from each agent
 - **Robust Error Handling**: Graceful fallbacks and comprehensive validation
+- **Collision-free Containers**: Each agent run uses a unique Docker container name to avoid clashes
+- **Preflight PR Context**: Captures PR details, diff, changed files, and review comments up front to keep agents aligned on the exact PR state
 - **User-Friendly Interface**: Colored output with clear progress indicators
 
 ## Prerequisites
@@ -137,11 +139,11 @@ The output includes PR context, issue counts, all issues, and pointers to the sa
     }
   ],
   "artifacts": {
-    "claude_review": "runs/pr-123-main/claude-review.json",
-    "codex_review": "runs/pr-123-main/codex-review.json",
-    "gemini_review": "runs/pr-123-main/gemini-review.json",
+    "claude_review": "runs/pr-123-main/claude-review.txt",
+    "codex_review": "runs/pr-123-main/codex-review.txt",
+    "gemini_review": "runs/pr-123-main/gemini-review.txt",
     "dedup_review": null,
-    "merged_review": "runs/pr-123-main/merged-review.json"
+    "merged_review": "runs/pr-123-main/merged-review.txt"
   },
   "run_directory": "runs/pr-123-main"
 }
@@ -299,11 +301,11 @@ When more than one agent is selected, Marx automatically invokes an agent for a 
 deduplication pass. By default, the first agent in the `--agents` list is used, but you can
 override this with the `--dedupe-with` option. This step reads the individual review outputs,
 asks the agent to merge duplicate issues, and writes the consolidated results to
-`runs/<pr>/dedup-review.json`, ensuring the `agent` field lists all reporting agents as a
+`runs/<pr>/dedup-review.txt`, ensuring the `agent` field lists all reporting agents as a
 comma-separated value. You can customize the deduplication instructions by providing a
 template at `MARX_DEDUP_PROMPT_PATH` or `DEDUP_PROMPT_PATH` (in `~/.marx`). The bundled
 template lives at `marx/prompts/dedup_prompt.md`. The Docker runner copies this file from
-`.marx/dedup-review.json` in the workspace back to the run directory, so keep custom output
+`.marx/dedup-review.txt` in the workspace back to the run directory, so keep custom output
 names aligned with that location. The template is rendered with Python string formatting, so
 escape any literal braces as `{{` and `}}` when editing to avoid malformed prompts.
 
@@ -407,7 +409,7 @@ Determines repository slug (owner/name) using three methods in order:
 Each AI model receives a detailed prompt instructing it to:
 - Gather PR context using `gh` commands
 - Review code for bugs, security issues, performance problems, etc.
-- Output findings in structured JSON format
+- Output findings in a structured text format
 
 Selected models run simultaneously in isolated Docker containers with:
 - Repository clone inside the container
@@ -416,7 +418,7 @@ Selected models run simultaneously in isolated Docker containers with:
 - GitHub token for API access
 
 ### 6. Results Merging & Display
-- Validates all JSON outputs
+- Validates all structured review outputs
 - Merges reviews from all three models
 - Sorts issues by priority (P0 → P1 → P2)
 - Displays formatted output with:
@@ -427,29 +429,27 @@ Selected models run simultaneously in isolated Docker containers with:
 
 ## Output Format
 
-### Review JSON Structure
+### Review Text Structure
 
-Each AI model produces JSON output with this structure:
+Each AI model produces a structured text file with this format:
 
-```json
-{
-  "pr_summary": {
-    "number": 123,
-    "title": "PR Title",
-    "description": "Brief description of changes"
-  },
-  "issues": [
-    {
-      "agent": "claude|codex|gemini",
-      "priority": "P0|P1|P2",
-      "file": "path/to/file.js",
-      "line": 42,
-      "category": "bug|security|performance|quality|style",
-      "description": "Detailed description of the issue",
-      "proposed_fix": "Concrete suggestion on how to fix it"
-    }
-  ]
-}
+```text
+PR_NUMBER: 123
+PR_TITLE: PR Title
+PR_DESCRIPTION:
+  Brief description of changes
+
+--- ISSUE ---
+agent: claude|codex|gemini
+priority: P0|P1|P2
+path: path/to/file.js
+line: 42
+commit_id: abcd1234
+category: bug|security|performance|quality|style
+description:
+  Detailed description of the issue
+proposed_fix:
+  Concrete suggestion on how to fix it
 ```
 
 ### Priority Definitions
@@ -462,11 +462,11 @@ Each AI model produces JSON output with this structure:
 
 All files are saved in the run artifacts directory (`runs/pr-{number}-{branch}/`):
 
-- `claude-review.json` - Claude's review
-- `codex-review.json` - Codex's review
-- `gemini-review.json` - Gemini's review
-- `dedup-review.json` - Deduplicated issues when multiple agents run
-- `merged-review.json` - Combined review from all models
+- `claude-review.txt` - Claude's review
+- `codex-review.txt` - Codex's review
+- `gemini-review.txt` - Gemini's review
+- `dedup-review.txt` - Deduplicated issues when multiple agents run
+- `merged-review.txt` - Combined review from all models
 
 ## Example Workflow
 
@@ -526,10 +526,10 @@ uses your local tag.
 ## Error Handling
 
 Marx includes robust error handling:
-- Non-JSON outputs from AI models are handled gracefully with empty reviews
+- Non-compliant review outputs from AI models are handled gracefully with empty reviews
 - Failed API calls are caught and reported with detailed error messages
 - Docker errors and container stderr are both captured and displayed
-- Invalid JSON is replaced with valid fallback structures
+- Invalid review formats are replaced with valid fallback structures
 - All temporary files are cleaned up automatically
 - Helpful hints are provided when authentication or configuration issues occur
 
@@ -552,7 +552,7 @@ Set the repository manually: `export MARX_REPO=owner/repo`
 ### "Missing required dependencies"
 Install the missing tools listed in the error message.
 
-### AI model fails or returns non-JSON output
+### AI model fails or returns invalid review output
 Marx will automatically handle this by creating an empty review. Error details are displayed in the terminal output, including:
 - Docker errors (if Docker command failed)
 - Container stderr output (errors from the AI CLI tool)
