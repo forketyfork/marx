@@ -203,7 +203,6 @@ class DockerRunner:
                     if was_modified:
                         with open(output_file, "w") as f:
                             json.dump(sanitized_data, f, indent=2)
-                    self._prune_stderr_noise(stderr_file)
                     print_success(f"{agent.capitalize()} analysis completed")
                 except json.JSONDecodeError:
                     print_warning(
@@ -388,33 +387,6 @@ class DockerRunner:
             return cls._strip_markdown_fences(data)
 
         return data, False
-
-    @staticmethod
-    def _prune_stderr_noise(stderr_file: Path) -> None:
-        """Remove known non-actionable MCP startup noise from stderr logs."""
-        if not stderr_file.exists():
-            return
-
-        lines = stderr_file.read_text().splitlines()
-        if not lines:
-            return
-
-        def is_noise(line: str) -> bool:
-            return (
-                line.startswith("mcp:")
-                or "rmcp::" in line
-                or "MCP startup" in line
-                or "MCP client" in line
-            )
-
-        filtered = [line for line in lines if not is_noise(line)]
-        if filtered == lines:
-            return
-
-        if filtered:
-            stderr_file.write_text("\n".join(filtered) + "\n")
-        else:
-            stderr_file.unlink(missing_ok=True)
 
     def _generate_prompt(self, config: ReviewPrompt, agent: str) -> str:
         """Generate the review prompt for an agent."""
