@@ -104,6 +104,8 @@ def parse_review_text(text: str, source: Path | None = None) -> AgentReview:
         if stripped == "--- ISSUE ---":
             if section == "issue" and current_issue is not None:
                 finalize_multiline(current_issue)
+            elif section == "header":
+                finalize_multiline(header)
             section = "issue"
             start_issue()
             continue
@@ -141,6 +143,7 @@ def parse_review_text(text: str, source: Path | None = None) -> AgentReview:
                 else:
                     header[dest_key] = value
                 continue
+            finalize_multiline(header)
             start_issue()
             section = "issue"
 
