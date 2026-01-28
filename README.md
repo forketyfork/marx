@@ -4,18 +4,19 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/language-Python-blue.svg)](https://www.python.org/)
 
-Marx is an interactive CLI that runs parallel AI code reviews for GitHub pull requests in Docker.
-It clones and reviews PRs inside containers, so your local repo stays untouched.
+Marx runs multiple AI agents in parallel, then deduplicates their findings into a single review.
+Agents run in YOLO mode inside Docker containers with the tools and PR context they need.
+You can post the merged issues as a pending GitHub review, edit or discard comments, and then submit.
 
 ## Screenshots
 
-![CLI summary](docs/screenshots/cli-summary.png)
-![CLI issues](docs/screenshots/cli-issues.png)
+<p><img src="docs/screenshots/cli-summary.png" width="48%" alt="CLI summary" /> <img src="docs/screenshots/cli-issues.png" width="48%" alt="CLI issues" /></p>
 
 ## Features
 
-- Parallel multi-model reviews with Claude, Codex, and Gemini
-- Containerized checkout keeps local repos clean
+- Parallel multi-agent reviews with automatic deduplication
+- YOLO-mode agents run in Docker with review tools and PR context
+- Create a pending GitHub review from merged issues (edit before submit)
 - Structured review outputs with a merged summary
 - Interactive PR selection (excludes your own PRs and PRs assigned to you)
 - Works with local CLI configs or API keys (config dirs are mounted into containers)
