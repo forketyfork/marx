@@ -32,7 +32,7 @@ Marx spins up multiple AI agents in Docker containers, each reviewing your PR in
 uv tool install marx-ai
 ```
 
-Need Nix or a source install? See `docs/installation.md`.
+Need Nix or a source install? See [Installation](docs/installation.md).
 
 ## Configure
 
@@ -49,7 +49,7 @@ MARX
 
 If you already use the agent CLIs locally, Marx copies `~/.claude`, `~/.codex`, and `~/.gemini`
 into the containers so those configs work there too. API keys are optional.
-See `docs/configuration.md` for details.
+See [Configuration](docs/configuration.md) for details.
 
 ## Use
 
