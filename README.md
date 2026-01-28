@@ -23,7 +23,7 @@ Marx spins up multiple AI agents in Docker containers, each reviewing your PR in
 ## Prerequisites
 
 - `git`
-- `gh` (authenticated)
+- [gh](https://cli.github.com/) (authenticated)
 - `docker`
 
 ## Install
