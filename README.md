@@ -4,9 +4,7 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/language-Python-blue.svg)](https://www.python.org/)
 
-Marx runs multiple AI agents in parallel, then deduplicates their findings into a single review.
-Agents run in YOLO mode inside Docker containers with the tools and PR context they need.
-You can post the merged issues as a pending GitHub review, edit or discard comments, and then submit.
+Marx spins up multiple AI agents in Docker containers, each reviewing your PR independently. It merges their findings, removes duplicates, and gives you a pending GitHub review you can edit before submitting.
 
 ## Screenshots
 
