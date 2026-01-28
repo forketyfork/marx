@@ -66,11 +66,11 @@ marx --pr 123 --json-output
 
 ## Docs
 
-- `docs/installation.md`
-- `docs/configuration.md`
-- `docs/usage.md`
-- `docs/how-it-works.md`
-- `docs/troubleshooting.md`
-- `docs/development.md`
-- `docs/publishing.md`
-- `docs/contributing.md`
+- [Installation](docs/installation.md)
+- [Configuration](docs/configuration.md)
+- [Usage](docs/usage.md)
+- [How It Works](docs/how-it-works.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Development](docs/development.md)
+- [Publishing](docs/publishing.md)
+- [Contributing](docs/contributing.md)
