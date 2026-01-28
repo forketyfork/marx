@@ -394,7 +394,6 @@ def create_github_review_payload(
     merged_review: MergedReview,
     github_client: GitHubClient,
     pr_number: int,
-    commit_sha: str,
 ) -> dict[str, Any]:
     """Create a GitHub review payload with inline comments and summary."""
     p0, p1, p2 = count_issues_by_priority(merged_review.issues)
@@ -458,17 +457,10 @@ def create_github_review_payload(
                 "side": "RIGHT",
             }
 
-            if commit_sha:
-                comment["commit_id"] = commit_sha
-
             comment_body_parts = [issue.description]
 
             if issue.proposed_fix:
                 comment_body_parts.append(f"\nSuggested fix: {issue.proposed_fix}")
-
-            comment_body_parts.extend(
-                [f"\nPriority: {issue.priority}", f"Category: {issue.category}"]
-            )
 
             comment["body"] = "\n".join(comment_body_parts)
 
@@ -490,7 +482,6 @@ def post_github_review(
     merged_review: MergedReview,
     github_client: GitHubClient,
     pr_number: int,
-    commit_sha: str,
     run_path: Path,
 ) -> None:
     """Post a pending GitHub review."""
@@ -499,7 +490,7 @@ def post_github_review(
         return
 
     try:
-        payload = create_github_review_payload(merged_review, github_client, pr_number, commit_sha)
+        payload = create_github_review_payload(merged_review, github_client, pr_number)
 
         payload_file = run_path / "pending-review-request.json"
         with open(payload_file, "w") as f:

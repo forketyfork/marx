@@ -253,8 +253,14 @@ class GitHubClient:
         body: str | None = None,
         comments: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        """Create a pending review on a PR."""
-        payload: dict[str, Any] = {"event": "COMMENT"}
+        """Create a pending review on a PR.
+
+        Note: We intentionally omit the 'event' field to create a PENDING review.
+        Per GitHub API docs, reviews without an event stay in PENDING state,
+        visible only to the author until manually submitted on GitHub.
+        Using 'event: COMMENT' would immediately submit the review publicly.
+        """
+        payload: dict[str, Any] = {}
 
         if body:
             payload["body"] = body

@@ -524,7 +524,7 @@ def main(
         print_info(f"Merged review saved to: {merged_output}")
 
         if total_issues > 0:
-            post_github_review(merged_review, github_client, pr_number, commit_sha, run_dir)
+            post_github_review(merged_review, github_client, pr_number, run_dir)
 
         console.print()
         console.print("[bold green]Review artifacts directory:[/bold green]")
