@@ -36,7 +36,9 @@ Need Nix or a source install? See [Installation](docs/installation.md).
 
 ## Configure
 
-Create `~/.marx` with your GitHub token and any agent keys you want to use:
+Create `~/.marx` with your GitHub token and any agent keys you want to use.
+The GitHub token must be a classic PAT with the `repo` scope
+([details](docs/configuration.md#github-authentication)):
 
 ```bash
 cat > ~/.marx <<'MARX'
