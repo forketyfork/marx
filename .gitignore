@@ -66,5 +66,8 @@ result-*
 .secrets
 .envrc.local
 
+# Temporary files
+.tmp/
+
 # Just
 .just/
