@@ -44,6 +44,17 @@ pip install -e ".[dev]"               # Install in editable mode for development
 
 **Note**: In Nix environments, `pip install` will fail because the Python environment is read-only.
 
+### Releasing
+
+See [docs/publishing.md](docs/publishing.md) for full details. Summary:
+
+1. Bump version in `pyproject.toml` and `marx/__init__.py`
+2. Commit, push via PR, merge to main
+3. Tag the merge commit: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`
+4. Create a GitHub release: `gh release create vX.Y.Z --title "vX.Y.Z" --notes "..."`
+
+The Publish workflow triggers on the release event and uploads to PyPI via Trusted Publishing.
+
 ### Manual Commands
 Always reformat the codebase with `black` before completing any task.
 ```bash
