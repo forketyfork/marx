@@ -122,7 +122,9 @@ class GitHubClient:
     def validate_pr(self, pr_number: int) -> None:
         """Validate that the PR exists and is accessible."""
         try:
-            self._run_gh_command(["pr", "view", str(pr_number), "--repo", self.repo])
+            self._run_gh_command(
+                ["pr", "view", str(pr_number), "--repo", self.repo, "--json", "number"]
+            )
         except GitHubAPIError:
             raise GitHubAPIError(
                 f"PR #{pr_number} not found in repository '{self.repo}'. "

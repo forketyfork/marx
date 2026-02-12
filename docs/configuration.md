@@ -26,6 +26,12 @@ Marx needs GitHub access in two places:
   used for cloning, fetching PR metadata, and posting reviews. For private repositories, this
   token is required.
 
+The token must be a **classic** Personal Access Token with the **`repo`** scope.
+Create one at <https://github.com/settings/tokens>.
+Fine-grained tokens are not supported by the agent CLIs that run inside the container.
+If the repository belongs to a GitHub organization with SAML SSO, you must also
+[authorize the token for that organization](https://docs.github.com/en/enterprise-cloud@latest/authentication/authenticating-with-saml-single-sign-on/authorizing-a-personal-access-token-for-use-with-saml-single-sign-on).
+
 Recommended: set `GITHUB_TOKEN` in `~/.marx` and run `gh auth login` once for your host CLI.
 
 ## Agent authentication

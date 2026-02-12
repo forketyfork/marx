@@ -12,6 +12,15 @@ Set `MARX_REPO=owner/repo` in your environment or `~/.marx`.
 
 Install the tools listed in the error message (`git`, `gh`, `docker`).
 
+## "Your token has not been granted the required scopes"
+
+The GitHub token needs to be a **classic** PAT with the `repo` scope.
+Fine-grained tokens are not supported. Create or update your token at
+<https://github.com/settings/tokens>.
+
+If the repository belongs to an organization with SAML SSO, you must also authorize
+the token for that organization on the same settings page.
+
 ## Agent fails or returns invalid output
 
 Marx will fall back to an empty review and show errors in the output. Common causes:
