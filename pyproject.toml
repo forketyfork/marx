@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "marx-ai"
-version = "v0.3.2"
+version = "v0.3.3"
 description = "Automated multi-agent code review tool for GitHub PRs"
 readme = "README.md"
 requires-python = ">=3.12"
