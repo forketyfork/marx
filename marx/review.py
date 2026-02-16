@@ -22,7 +22,7 @@ class Issue(BaseModel):
     commit_id: str
     category: str
     description: str
-    proposed_fix: str
+    proposed_fix: str | None = None
 
 
 class PRSummary(BaseModel):
@@ -191,7 +191,7 @@ def parse_review_text(text: str, source: Path | None = None) -> AgentReview:
     parsed_issues: list[Issue] = []
     for issue in issues:
         agent = issue.get("agent") or default_agent
-        required_keys = ["priority", "commit_id", "category", "description", "proposed_fix"]
+        required_keys = ["priority", "commit_id", "category", "description"]
         missing_issue = [key for key in required_keys if key not in issue]
         if agent is None:
             missing_issue.insert(0, "agent")
@@ -221,7 +221,7 @@ def parse_review_text(text: str, source: Path | None = None) -> AgentReview:
                 commit_id=issue["commit_id"],
                 category=issue["category"],
                 description=issue["description"],
-                proposed_fix=issue["proposed_fix"],
+                proposed_fix=issue.get("proposed_fix"),
             )
         )
 
