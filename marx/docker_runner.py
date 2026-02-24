@@ -596,8 +596,8 @@ EOF
 
 write_preflight_context
 
-if [ -x "/host-configs/pre-agent.sh" ]; then
-    /host-configs/pre-agent.sh
+if [ -f "/host-configs/pre-agent.sh" ]; then
+    . /host-configs/pre-agent.sh
 fi
 
 case "$MODEL_CMD" in

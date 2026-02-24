@@ -62,6 +62,31 @@ API keys are optional when local configurations exist; they are just another sup
 
 API keys are optional when you have local configs. They're mainly useful in CI or if you don't want to manage local CLI configs.
 
+## Pre-agent hook
+
+If `~/.marx.d/pre-agent.sh` exists on the host, Marx mounts it into the container and sources
+it after the repository is cloned but before the agent starts. Because it is sourced rather than
+executed as a subprocess, any environment variable assignments in the script are visible to the
+agent.
+
+The hook runs as the same user as the agent and has access to the full container environment,
+including all tokens and API keys passed by Marx.
+
+Example — forward a host-side proxy into the container using `socat`:
+
+```bash
+#!/usr/bin/env bash
+socat TCP-LISTEN:19516,bind=127.0.0.1,fork TCP:host.docker.internal:19516 &
+for i in $(seq 1 20); do
+    ss -tlnp 2>/dev/null | grep -q ':19516' && break
+    sleep 0.1
+done
+```
+
+On macOS, `host.docker.internal` resolves automatically. On Linux with Docker Engine, add
+`--add-host=host.docker.internal:host-gateway` to your Docker run command, or configure it
+at the daemon level.
+
 ## Prompt customization
 
 You can override the review prompt templates used for the agents:
