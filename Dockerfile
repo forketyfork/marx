@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     gnupg \
     tree \
+    socat \
     build-essential \
     pkg-config \
     libssl-dev \

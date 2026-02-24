@@ -279,6 +279,10 @@ class DockerRunner:
                 volumes[str(host_config_path)] = {"bind": container_config_path, "mode": "ro"}
                 environment[f"{agent.upper()}_CONFIG_SRC"] = container_config_path
 
+        pre_agent_script = Path.home() / ".marx.d" / "pre-agent.sh"
+        if pre_agent_script.exists():
+            volumes[str(pre_agent_script)] = {"bind": "/host-configs/pre-agent.sh", "mode": "ro"}
+
         container_suffix = uuid.uuid4().hex[:8]
         container_name = f"marx-{agent}-{prompt_config.pr_number}-{container_suffix}"
 
@@ -591,6 +595,10 @@ EOF
 }
 
 write_preflight_context
+
+if [ -x "/host-configs/pre-agent.sh" ]; then
+    /host-configs/pre-agent.sh
+fi
 
 case "$MODEL_CMD" in
     claude)
