@@ -250,12 +250,7 @@ class DockerRunner:
             str(run_path): {"bind": CONTAINER_RUNNER_DIR, "mode": "rw"},
         }
 
-        environment = {
-            "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN", ""),
-            "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
-            "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", ""),
-            "GOOGLE_API_KEY": os.environ.get("GOOGLE_API_KEY", ""),
-            "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY", ""),
+        environment: dict[str, str] = {
             "HOME_OVERRIDE": CONTAINER_WORKSPACE_DIR,
             "HOST_UID": str(host_uid),
             "HOST_GID": str(host_gid),
@@ -265,6 +260,21 @@ class DockerRunner:
                 f"{CONTAINER_WORKSPACE_DIR}/repo/.marx/{container_output_name}"
             ),
         }
+
+        # Only pass API keys when they have values. If passed as empty strings,
+        # they pre-populate process.env in the container and prevent agent CLIs
+        # from loading credentials from their own config files (e.g. dotenv
+        # skips keys that are already present in the environment).
+        for key in (
+            "GITHUB_TOKEN",
+            "ANTHROPIC_API_KEY",
+            "OPENAI_API_KEY",
+            "GOOGLE_API_KEY",
+            "GEMINI_API_KEY",
+        ):
+            value = os.environ.get(key, "")
+            if value:
+                environment[key] = value
 
         if model_override:
             env_var = MODEL_OVERRIDE_ENV_VARS.get(agent)

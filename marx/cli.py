@@ -40,6 +40,33 @@ from marx.ui import (
 )
 
 
+def check_gemini_trusted_workspace() -> None:
+    """Warn if /workspace/repo is not trusted in ~/.gemini/trustedFolders.json.
+
+    Gemini CLI only loads ~/.gemini/.env when the workspace directory is trusted.
+    The container always runs from /workspace/repo, so that path must appear in
+    trustedFolders.json or credentials from .env will be silently ignored.
+    """
+    trusted_file = Path.home() / ".gemini" / "trustedFolders.json"
+    if not trusted_file.exists():
+        print_warning(
+            "~/.gemini/trustedFolders.json not found. "
+            "Gemini may not load credentials from ~/.gemini/.env inside the container. "
+            "See docs/configuration.md for details."
+        )
+        return
+    try:
+        trusted = json.loads(trusted_file.read_text())
+    except (json.JSONDecodeError, OSError):
+        return
+    if "/workspace/repo" not in trusted:
+        print_warning(
+            '"/workspace/repo" is not in ~/.gemini/trustedFolders.json. '
+            "Gemini will not load credentials from ~/.gemini/.env inside the container. "
+            "See docs/configuration.md for details."
+        )
+
+
 def check_dependencies(require_docker: bool = True) -> None:
     """Check for required system dependencies."""
     missing = []
@@ -326,6 +353,9 @@ def main(
                 print_warning("--agents option is ignored when --resume is used")
                 agents_to_run = list(SUPPORTED_AGENTS)
                 model_overrides = {}
+
+        if not resume and "gemini" in agents_to_run:
+            check_gemini_trusted_workspace()
 
         dedupe_agent: str | None = None
         dedupe_model_override: str | None = None
