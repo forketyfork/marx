@@ -153,6 +153,36 @@ def test_load_review(tmp_path: Path) -> None:
     assert review.issues[0].agent == "claude"
 
 
+def test_load_review_unrecognized_line_value(tmp_path: Path) -> None:
+    """Test that an unrecognized non-numeric line value is treated as null."""
+    review_file = tmp_path / "review.txt"
+    review_file.write_text(
+        "\n".join(
+            [
+                "PR_NUMBER: 123",
+                "PR_TITLE: Test PR",
+                "PR_DESCRIPTION:",
+                "  Test description",
+                "--- ISSUE ---",
+                "agent: claude",
+                "priority: P0",
+                "path: test.py",
+                "line: <line_number>",
+                "commit_id: abc123",
+                "category: bug",
+                "description:",
+                "  Test issue",
+                "",
+            ]
+        )
+    )
+
+    review = load_review(review_file)
+
+    assert len(review.issues) == 1
+    assert review.issues[0].line is None
+
+
 def test_merge_reviews(tmp_path: Path) -> None:
     """Test merging multiple reviews."""
     claude_file = tmp_path / "claude-review.txt"
