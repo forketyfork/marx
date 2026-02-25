@@ -32,7 +32,7 @@ The image must include:
 
 - `/bin/bash` and core utilities
 - `git` and `gh`
-- `rg`, `fd`, `tree`, `fastmod`, `ast-grep` (with `sg` alias)
+- `rg`, `fd`, `tree`, `socat`, `fastmod`, `ast-grep` (with `sg` alias)
 - The agent CLIs you intend to run (`claude`, `codex`, `gemini`)
 
 ## Security notes
