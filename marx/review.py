@@ -205,8 +205,8 @@ def parse_review_text(text: str, source: Path | None = None) -> AgentReview:
         else:
             try:
                 line_number = int(line_value)
-            except ValueError as exc:
-                raise ReviewError(f"Invalid line number: {line_value}") from exc
+            except ValueError:
+                line_number = None
 
         file_value = issue.get("file")
         if file_value is not None and file_value.lower() == "null":
