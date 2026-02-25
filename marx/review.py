@@ -206,6 +206,7 @@ def parse_review_text(text: str, source: Path | None = None) -> AgentReview:
             try:
                 line_number = int(line_value)
             except ValueError:
+                print_warning(f"Unrecognized line value {line_value!r}, treating as null")
                 line_number = None
 
         file_value = issue.get("file")
