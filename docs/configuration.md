@@ -62,6 +62,25 @@ API keys are optional when local configurations exist; they are just another sup
 
 API keys are optional when you have local configs. They're mainly useful in CI or if you don't want to manage local CLI configs.
 
+### Gemini: trusting the container workspace
+
+Gemini CLI only loads `~/.gemini/.env` when the current working directory is trusted. Inside the
+container the agent runs from `/workspace/repo`, which is a fresh clone that won't be in your
+`~/.gemini/trustedFolders.json` by default. Without this trust entry, credentials from `.env` are
+silently ignored and the Vertex AI validation fails.
+
+Add the container workspace to your `~/.gemini/trustedFolders.json`, merging it into any
+existing entries:
+
+```json
+{
+  "/your/existing/project": "TRUST_FOLDER",
+  "/workspace/repo": "TRUST_FOLDER"
+}
+```
+
+Marx warns you at startup if Gemini is selected and this entry is missing.
+
 ## Pre-agent hook
 
 If `~/.marx.d/pre-agent.sh` exists on the host, Marx mounts it into the container and sources

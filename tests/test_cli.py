@@ -1,11 +1,18 @@
 """Tests for CLI helper functions."""
 
+import json
 from pathlib import Path
+from unittest.mock import patch
 
 import click
 import pytest
 
-from marx.cli import build_json_output, parse_agent_argument, parse_single_agent
+from marx.cli import (
+    build_json_output,
+    check_gemini_trusted_workspace,
+    parse_agent_argument,
+    parse_single_agent,
+)
 from marx.review import Issue, MergedReview, PRSummary
 
 
@@ -76,6 +83,66 @@ def test_parse_single_agent_invalid_agent() -> None:
 def test_parse_single_agent_missing_model() -> None:
     with pytest.raises(click.BadParameter):
         parse_single_agent("claude:")
+
+
+def test_check_gemini_trusted_workspace_missing_file(tmp_path: Path) -> None:
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        with patch("marx.cli.print_warning") as mock_warn:
+            check_gemini_trusted_workspace()
+
+    mock_warn.assert_called_once()
+    assert "trustedFolders.json not found" in mock_warn.call_args[0][0]
+
+
+def test_check_gemini_trusted_workspace_missing_entry(tmp_path: Path) -> None:
+    trusted_file = tmp_path / ".gemini" / "trustedFolders.json"
+    trusted_file.parent.mkdir(parents=True)
+    trusted_file.write_text(json.dumps({"/some/other/path": "TRUST_FOLDER"}), encoding="utf-8")
+
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        with patch("marx.cli.print_warning") as mock_warn:
+            check_gemini_trusted_workspace()
+
+    mock_warn.assert_called_once()
+    assert "/workspace/repo" in mock_warn.call_args[0][0]
+
+
+def test_check_gemini_trusted_workspace_entry_present(tmp_path: Path) -> None:
+    trusted_file = tmp_path / ".gemini" / "trustedFolders.json"
+    trusted_file.parent.mkdir(parents=True)
+    trusted_file.write_text(json.dumps({"/workspace/repo": "TRUST_FOLDER"}), encoding="utf-8")
+
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        with patch("marx.cli.print_warning") as mock_warn:
+            check_gemini_trusted_workspace()
+
+    mock_warn.assert_not_called()
+
+
+def test_check_gemini_trusted_workspace_malformed_json(tmp_path: Path) -> None:
+    trusted_file = tmp_path / ".gemini" / "trustedFolders.json"
+    trusted_file.parent.mkdir(parents=True)
+    trusted_file.write_text("not valid json", encoding="utf-8")
+
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        with patch("marx.cli.print_warning") as mock_warn:
+            check_gemini_trusted_workspace()
+
+    mock_warn.assert_called_once()
+    assert "could not be read" in mock_warn.call_args[0][0]
+
+
+def test_check_gemini_trusted_workspace_non_dict_json(tmp_path: Path) -> None:
+    trusted_file = tmp_path / ".gemini" / "trustedFolders.json"
+    trusted_file.parent.mkdir(parents=True)
+    trusted_file.write_text("null", encoding="utf-8")
+
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        with patch("marx.cli.print_warning") as mock_warn:
+            check_gemini_trusted_workspace()
+
+    mock_warn.assert_called_once()
+    assert "unexpected format" in mock_warn.call_args[0][0]
 
 
 def test_build_json_output_includes_counts_and_artifacts(tmp_path: Path) -> None:
