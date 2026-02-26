@@ -56,8 +56,20 @@ def check_gemini_trusted_workspace() -> None:
         )
         return
     try:
-        trusted = json.loads(trusted_file.read_text())
-    except (json.JSONDecodeError, OSError):
+        trusted = json.loads(trusted_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+        print_warning(
+            f"~/.gemini/trustedFolders.json could not be read: {e}. "
+            "Gemini may not load credentials from ~/.gemini/.env inside the container. "
+            "See docs/configuration.md for details."
+        )
+        return
+    if not isinstance(trusted, dict):
+        print_warning(
+            "~/.gemini/trustedFolders.json has an unexpected format. "
+            "Gemini may not load credentials from ~/.gemini/.env inside the container. "
+            "See docs/configuration.md for details."
+        )
         return
     if "/workspace/repo" not in trusted:
         print_warning(

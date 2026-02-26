@@ -1,5 +1,6 @@
 """Tests for the Docker runner script generation."""
 
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -35,6 +36,53 @@ def _make_runner() -> tuple[DockerRunner, ReviewPrompt]:
         repo="owner/repo", pr_number=1, commit_sha="abc123", agent_name="claude"
     )
     return runner, prompt_config
+
+
+def _run_container_capturing_environment(
+    runner: DockerRunner, prompt_config: ReviewPrompt, tmp_path: Path, env: dict
+) -> dict:
+    try:
+        with patch.dict(os.environ, env, clear=True):
+            runner._run_container(
+                "gemini",
+                prompt_config,
+                tmp_path,
+                tmp_path / "prompt.txt",
+                tmp_path / "runner.sh",
+                tmp_path / "stderr.txt",
+            )
+    except Exception:
+        pass
+    call = runner.client.containers.run.call_args  # type: ignore[union-attr]
+    return call.kwargs.get("environment", {}) if call else {}
+
+
+def test_api_keys_not_forwarded_when_empty(tmp_path: Path) -> None:
+    """Empty or absent API keys must not appear in the container environment."""
+
+    runner, prompt_config = _make_runner()
+
+    env = _run_container_capturing_environment(runner, prompt_config, tmp_path, {})
+
+    for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"):
+        assert key not in env, f"{key} should not be forwarded when unset"
+
+
+def test_api_keys_forwarded_when_set(tmp_path: Path) -> None:
+    """Non-empty API keys must be included in the container environment."""
+
+    runner, prompt_config = _make_runner()
+
+    host_env = {
+        "GOOGLE_API_KEY": "test-google-key",
+        "GEMINI_API_KEY": "test-gemini-key",
+        "ANTHROPIC_API_KEY": "test-anthropic-key",
+    }
+    env = _run_container_capturing_environment(runner, prompt_config, tmp_path, host_env)
+
+    assert env.get("GOOGLE_API_KEY") == "test-google-key"
+    assert env.get("GEMINI_API_KEY") == "test-gemini-key"
+    assert env.get("ANTHROPIC_API_KEY") == "test-anthropic-key"
 
 
 def _run_container_capturing_volumes(

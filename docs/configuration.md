@@ -69,11 +69,12 @@ container the agent runs from `/workspace/repo`, which is a fresh clone that won
 `~/.gemini/trustedFolders.json` by default. Without this trust entry, credentials from `.env` are
 silently ignored and the Vertex AI validation fails.
 
-Add the container workspace to your trusted folders once:
+Add the container workspace to your `~/.gemini/trustedFolders.json`, merging it into any
+existing entries:
 
-```bash
-# ~/.gemini/trustedFolders.json
+```json
 {
+  "/your/existing/project": "TRUST_FOLDER",
   "/workspace/repo": "TRUST_FOLDER"
 }
 ```
